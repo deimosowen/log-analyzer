@@ -128,7 +128,7 @@ else
                         {
                             var stat = stats.GetValueOrDefault(log.Id);
                             <tr>
-                                <td class="strong">@log.DisplayName</td>
+                                <td class="strong" title="@log.DisplayName">@LogFileDisplayName.Format(log)</td>
                                 <td>@log.OriginalPath</td>
                                 <td>@log.Format</td>
                                 <td>@FormatBytes(log.SizeBytes)</td>
@@ -162,7 +162,7 @@ else
     private string? error;
     private readonly CancellationTokenSource refreshCts = new();
 
-    private IEnumerable<LogFileEntity> FilteredLogs => logs.OrderBy(log => log.DisplayName);
+    private IEnumerable<LogFileEntity> FilteredLogs => logs.OrderBy(LogFileDisplayName.Format);
 
     protected override async Task OnInitializedAsync()
     {

@@ -4,9 +4,9 @@ obj/
 .vscode/
 .idea/
 
-artifacts/
-storage/
-data/
+/artifacts/
+/storage/
+/data/
 *.db
 *.db-shm
 *.db-wal

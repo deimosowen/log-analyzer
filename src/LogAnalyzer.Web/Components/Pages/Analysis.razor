@@ -16,8 +16,8 @@
 else
 {
     <div class="analysis-shell">
-        <header class="analysis-hero">
-            <div class="hero-title">
+        <header class="analysis-topbar">
+            <div class="analysis-title-row">
                 <button class="icon-button" title="К проекту" @onclick="BackToProject">←</button>
                 <div>
                     <span class="eyebrow">Анализ инцидента</span>
@@ -25,37 +25,44 @@ else
                 </div>
             </div>
 
-            <div class="window-control" aria-label="Окно корреляции">
-                <span>Окно</span>
-                <label>
-                    До
-                    <input type="number" class="form-control number-input" @bind="beforeSeconds" min="0" @bind:after="RefreshCorrelation" />
+            <div class="analysis-controls" aria-label="Фильтры анализа">
+                <label class="compact-field search-field">
+                    <span>Поиск</span>
+                    <input class="form-control" @bind="query" @bind:event="oninput" placeholder="сообщение, URL, exception" />
                 </label>
-                <label>
-                    После
-                    <input type="number" class="form-control number-input" @bind="afterSeconds" min="0" @bind:after="RefreshCorrelation" />
+
+                <div class="window-control" aria-label="Окно корреляции">
+                    <span>Окно</span>
+                    <label>
+                        <span>до</span>
+                        <input type="number" class="form-control number-input" @bind="beforeSeconds" min="0" @bind:after="RefreshCorrelation" />
+                    </label>
+                    <label>
+                        <span>после</span>
+                        <input type="number" class="form-control number-input" @bind="afterSeconds" min="0" @bind:after="RefreshCorrelation" />
+                    </label>
+                </div>
+
+                <label class="compact-field timezone-field">
+                    <span>Часовой пояс</span>
+                    <input class="form-control" @bind="displayTimeZoneId" />
                 </label>
+
+                <div class="toolbar-actions">
+                    <button class="btn btn-primary" @onclick="Refresh">Применить</button>
+                    <button class="btn btn-outline-secondary" @onclick="ResetView">Сброс</button>
+                </div>
             </div>
-
-            <label class="search-field">
-                Поиск
-                <input class="form-control" @bind="query" @bind:event="oninput" />
-            </label>
-
-            <label class="timezone-field">
-                Часовой пояс
-                <input class="form-control" @bind="displayTimeZoneId" />
-            </label>
-
-            <button class="btn btn-primary" @onclick="Refresh">Применить</button>
-            <button class="btn btn-outline-secondary" @onclick="ResetView">Сброс</button>
         </header>
 
-        <section class="source-bar">
-            <div class="source-heading">
-                <strong>Логи</strong>
-                <span>выбрано @selectedLogIds.Count из @logs.Count</span>
-            </div>
+        <details class="source-drawer">
+            <summary>
+                <div class="source-heading">
+                    <strong>Логи</strong>
+                    <span>выбрано @selectedLogIds.Count из @logs.Count</span>
+                </div>
+                <span class="selected-log-preview">@SelectedLogPreview</span>
+            </summary>
             <div class="source-chips">
                 @foreach (var log in logs)
                 {
@@ -63,13 +70,13 @@ else
                     <label class="source-chip @(selectedLogIds.Contains(log.Id) ? "active" : "")">
                         <input type="checkbox" checked="@selectedLogIds.Contains(log.Id)" @onchange="value => ToggleLog(log.Id, value)" />
                         <span>
-                            <strong>@log.DisplayName</strong>
+                            <strong title="@log.DisplayName">@LogDisplayName(log)</strong>
                             <small>@(stat?.ErrorCount ?? 0) ошибок · @(stat?.WarnCount ?? 0) предупреждений</small>
                         </span>
                     </label>
                 }
             </div>
-        </section>
+        </details>
 
         <main class="@StageClass">
             @if (showStep1)

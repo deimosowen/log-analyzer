@@ -2,6 +2,7 @@ using LogAnalyzer.Application;
 using LogAnalyzer.Application.Analysis;
 using LogAnalyzer.Application.Time;
 using LogAnalyzer.Domain;
+using LogAnalyzer.Web.Formatting;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.Web.Virtualization;
@@ -57,11 +58,39 @@ public partial class Analysis
 
     private bool IsCorrelationTruncated => correlatedTotalCount > correlatedEvents.Count;
 
+    private string SelectedLogPreview
+    {
+        get
+        {
+            if (selectedLogIds.Count == 0)
+            {
+                return "логи не выбраны";
+            }
+
+            if (logs.Count > 0 && selectedLogIds.Count == logs.Count)
+            {
+                return "все логи";
+            }
+
+            var names = logs
+                .Where(log => selectedLogIds.Contains(log.Id))
+                .Select(LogDisplayName)
+                .Take(3)
+                .ToArray();
+
+            var suffix = selectedLogIds.Count > names.Length
+                ? $" +{selectedLogIds.Count - names.Length}"
+                : string.Empty;
+
+            return string.Join(", ", names) + suffix;
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         project = await Metadata.GetProjectAsync(ProjectId, CancellationToken.None);
         logs = (await Metadata.ListLogFilesAsync(ProjectId, CancellationToken.None)).ToList();
-        logNames = logs.ToDictionary(log => log.Id, log => log.DisplayName, StringComparer.OrdinalIgnoreCase);
+        logNames = logs.ToDictionary(log => log.Id, LogFileDisplayName.Format, StringComparer.OrdinalIgnoreCase);
         selectedLogIds = logs.Select(log => log.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         selectedLevels = ProblemLevels.ToHashSet(StringComparer.OrdinalIgnoreCase);
         stats = await EventStore.GetStatsByLogFileAsync(ProjectId, CancellationToken.None);
@@ -245,6 +274,11 @@ public partial class Analysis
     private string LogName(string id)
     {
         return logNames.TryGetValue(id, out var name) ? name : id;
+    }
+
+    private static string LogDisplayName(LogFileEntity log)
+    {
+        return LogFileDisplayName.Format(log);
     }
 
     private string FormatGroupWindow(CorrelationGroup group)
