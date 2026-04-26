@@ -15,7 +15,8 @@ public sealed class PipeSeparatedAppLogParser : RegexLineLogParser
 
     public override bool CanParse(LogSample sample)
     {
-        return sample.Lines.Count(line => Pattern.IsMatch(line)) >= Math.Min(2, sample.Lines.Count);
+        return sample.Lines.Count(line => Pattern.IsMatch(line)) >=
+               Math.Min(ParserDefaults.ParserDetectionMinimumMatches, sample.Lines.Count);
     }
 
     protected override bool TryParseStart(

@@ -6,8 +6,6 @@ namespace LogAnalyzer.Application;
 
 public sealed class ImportProcessor
 {
-    private const int BatchSize = 5000;
-
     private readonly IMetadataRepository _metadataRepository;
     private readonly ILogEventStore _eventStore;
     private readonly ILogFileStorage _storage;
@@ -106,7 +104,7 @@ public sealed class ImportProcessor
                         job.Options.IisLogsAreUtc,
                         job.Options.CombineMultilineExceptions);
 
-                    var batch = new List<LogEvent>(BatchSize);
+                    var batch = new List<LogEvent>(ImportProcessingDefaults.EventBatchSize);
                     DateTimeOffset? firstTimestamp = null;
                     DateTimeOffset? lastTimestamp = null;
                     var lineCount = 0L;
@@ -118,7 +116,7 @@ public sealed class ImportProcessor
                         lastTimestamp = parsed.TimestampUtc;
                         lineCount = Math.Max(lineCount, parsed.EndLineNumber);
 
-                        if (batch.Count >= BatchSize)
+                        if (batch.Count >= ImportProcessingDefaults.EventBatchSize)
                         {
                             await _eventStore.InsertBatchAsync(batch, cancellationToken);
                             batch.Clear();
@@ -237,11 +235,12 @@ public sealed class ImportProcessor
         string fileName,
         CancellationToken cancellationToken)
     {
-        var lines = new List<string>(100);
+        var lines = new List<string>(ImportProcessingDefaults.SampleLineCount);
         using var stream = File.OpenRead(path);
         using var reader = new StreamReader(stream);
 
-        while (lines.Count < 100 && await reader.ReadLineAsync(cancellationToken) is { } line)
+        while (lines.Count < ImportProcessingDefaults.SampleLineCount &&
+               await reader.ReadLineAsync(cancellationToken) is { } line)
         {
             if (!string.IsNullOrWhiteSpace(line))
             {

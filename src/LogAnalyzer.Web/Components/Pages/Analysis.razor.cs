@@ -10,8 +10,6 @@ namespace LogAnalyzer.Web.Components.Pages;
 
 public partial class Analysis
 {
-    private const int CorrelationSearchLimit = 1000;
-
     private static readonly string[] ProblemLevels = ProblemEventLevels.Default;
 
     private enum CorrelationDisplayMode
@@ -33,10 +31,10 @@ public partial class Analysis
     private Virtualize<LogEvent>? problemVirtualize;
     private LogEvent? selectedEvent;
     private long correlatedTotalCount;
-    private string displayTimeZoneId = "Europe/Moscow";
+    private string displayTimeZoneId = TimeZoneDefaults.Display;
     private string? query;
-    private int beforeSeconds = 30;
-    private int afterSeconds = 10;
+    private int beforeSeconds = EventSearchDefaults.DefaultBeforeSeconds;
+    private int afterSeconds = EventSearchDefaults.DefaultAfterSeconds;
     private bool showStep1 = true;
     private bool showStep2 = true;
     private CorrelationDisplayMode correlationMode = CorrelationDisplayMode.Summary;
@@ -104,7 +102,7 @@ public partial class Analysis
             LogFileIds = selectedLogIds.ToArray(),
             Levels = ProblemLevels,
             Offset = 0,
-            Limit = CorrelationSearchLimit
+            Limit = EventSearchDefaults.CorrelationLimit
         };
     }
 
@@ -144,8 +142,8 @@ public partial class Analysis
         query = null;
         selectedLevels = ProblemLevels.ToHashSet(StringComparer.OrdinalIgnoreCase);
         selectedLogIds = logs.Select(log => log.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        beforeSeconds = 30;
-        afterSeconds = 10;
+        beforeSeconds = EventSearchDefaults.DefaultBeforeSeconds;
+        afterSeconds = EventSearchDefaults.DefaultAfterSeconds;
         await Refresh();
     }
 

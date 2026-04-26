@@ -101,7 +101,7 @@ public sealed class IisW3CParser : ILogParser
                 TimestampUtc = timestampUtc,
                 TimestampMs = TimeZoneHelper.ToUnixMilliseconds(timestampUtc),
                 Level = IisLevel(statusCode),
-                Source = "IIS",
+                Source = ParserDefaults.IisSource,
                 ThreadId = string.Empty,
                 LineNumber = lineNumber,
                 EndLineNumber = lineNumber,
@@ -138,8 +138,8 @@ public sealed class IisW3CParser : ILogParser
 
     private static string IisLevel(int statusCode)
     {
-        return statusCode >= 500 ? "ERROR" :
-            statusCode >= 400 ? "WARN" :
-            "INFO";
+        return statusCode >= 500 ? LogLevels.Error :
+            statusCode >= 400 ? LogLevels.Warn :
+            LogLevels.Info;
     }
 }

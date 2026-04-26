@@ -1,6 +1,7 @@
 using LogAnalyzer.Application;
 using LogAnalyzer.Application.Parsing;
 using LogAnalyzer.Infrastructure.ClickHouse;
+using LogAnalyzer.Infrastructure.Migrations;
 using LogAnalyzer.Infrastructure.Sqlite;
 using LogAnalyzer.Infrastructure.Storage;
 using Microsoft.Extensions.Configuration;
@@ -18,6 +19,8 @@ public static class ServiceCollectionExtensions
         services.Configure<SqliteOptions>(configuration.GetSection("Sqlite"));
         services.Configure<ClickHouseOptions>(configuration.GetSection("ClickHouse"));
 
+        services.AddSingleton<SqliteConnectionFactory>();
+        services.AddSingleton<IDatabaseMigrator, SqliteMetadataMigrator>();
         services.AddSingleton<IMetadataRepository, SqliteMetadataRepository>();
         services.AddSingleton<ILogFileStorage, FileSystemLogStorage>();
         services.AddSingleton<IImportJobQueue, ImportJobQueue>();
@@ -32,11 +35,14 @@ public static class ServiceCollectionExtensions
         var clickHouseEnabled = configuration.GetValue<bool>("ClickHouse:Enabled");
         if (clickHouseEnabled)
         {
-            services.AddHttpClient<ClickHouseLogEventStore>();
+            services.AddHttpClient<ClickHouseSqlClient>();
+            services.AddSingleton<ClickHouseLogEventStore>();
+            services.AddSingleton<IDatabaseMigrator, ClickHouseEventStoreMigrator>();
             services.AddSingleton<ILogEventStore>(provider => provider.GetRequiredService<ClickHouseLogEventStore>());
         }
         else
         {
+            services.AddSingleton<IDatabaseMigrator, SqliteEventStoreMigrator>();
             services.AddSingleton<ILogEventStore, SqliteLogEventStore>();
         }
 

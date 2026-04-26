@@ -2,21 +2,6 @@ using LogAnalyzer.Domain;
 
 namespace LogAnalyzer.Application.Analysis;
 
-public sealed record CorrelationGroup(
-    string Key,
-    string Title,
-    string Level,
-    int Count,
-    int LogCount,
-    DateTimeOffset FirstTimestamp,
-    DateTimeOffset LastTimestamp,
-    LogEvent Representative);
-
-public static class ProblemEventLevels
-{
-    public static readonly string[] Default = ["ERROR", "WARN", "FATAL"];
-}
-
 public static class CorrelationGrouping
 {
     public static IReadOnlyList<CorrelationGroup> GroupProblemEvents(IEnumerable<LogEvent> events)
@@ -107,9 +92,9 @@ public static class CorrelationGrouping
     {
         return level switch
         {
-            "FATAL" => 3,
-            "ERROR" => 2,
-            "WARN" => 1,
+            LogLevels.Fatal => 3,
+            LogLevels.Error => 2,
+            LogLevels.Warn => 1,
             _ => 0
         };
     }

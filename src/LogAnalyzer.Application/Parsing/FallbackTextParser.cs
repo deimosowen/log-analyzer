@@ -122,12 +122,14 @@ public sealed class FallbackTextParser : ILogParser
                 TimestampUtc = _timestampUtc,
                 TimestampMs = TimeZoneHelper.ToUnixMilliseconds(_timestampUtc),
                 Level = string.Empty,
-                Source = "raw",
+                Source = ParserDefaults.RawSource,
                 ThreadId = string.Empty,
                 LineNumber = _lineNumber,
                 EndLineNumber = endLineNumber,
                 ByteOffset = _byteOffset,
-                Message = raw.Length > 500 ? raw[..500] : raw,
+                Message = raw.Length > ParserDefaults.FallbackMessagePreviewLength
+                    ? raw[..ParserDefaults.FallbackMessagePreviewLength]
+                    : raw,
                 Exception = string.Empty,
                 RawText = raw
             };

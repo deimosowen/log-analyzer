@@ -1,5 +1,6 @@
 using LogAnalyzer.Application;
 using LogAnalyzer.Infrastructure;
+using LogAnalyzer.Infrastructure.Migrations;
 using LogAnalyzer.Web.Api;
 using LogAnalyzer.Web.Components;
 using LogAnalyzer.Web.Services;
@@ -36,9 +37,10 @@ app.Run();
 static async Task InitializeStorageAsync(IServiceProvider services)
 {
     using var scope = services.CreateScope();
-    var metadata = scope.ServiceProvider.GetRequiredService<IMetadataRepository>();
-    var events = scope.ServiceProvider.GetRequiredService<ILogEventStore>();
+    var migrators = scope.ServiceProvider.GetServices<IDatabaseMigrator>();
 
-    await metadata.InitializeAsync(CancellationToken.None);
-    await events.InitializeAsync(CancellationToken.None);
+    foreach (var migrator in migrators)
+    {
+        await migrator.MigrateAsync(CancellationToken.None);
+    }
 }

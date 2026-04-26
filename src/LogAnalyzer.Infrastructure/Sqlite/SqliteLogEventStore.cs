@@ -3,61 +3,16 @@ using System.Text;
 using LogAnalyzer.Application;
 using LogAnalyzer.Domain;
 using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.Options;
 
 namespace LogAnalyzer.Infrastructure.Sqlite;
 
 public sealed class SqliteLogEventStore : ILogEventStore
 {
-    private readonly string _connectionString;
+    private readonly SqliteConnectionFactory _connectionFactory;
 
-    public SqliteLogEventStore(IOptions<SqliteOptions> options)
+    public SqliteLogEventStore(SqliteConnectionFactory connectionFactory)
     {
-        var databasePath = Path.GetFullPath(options.Value.DatabasePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
-        _connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared
-        }.ToString();
-    }
-
-    public async Task InitializeAsync(CancellationToken cancellationToken)
-    {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            CREATE TABLE IF NOT EXISTS log_events (
-                event_id TEXT PRIMARY KEY,
-                project_id TEXT NOT NULL,
-                upload_session_id TEXT NOT NULL,
-                log_file_id TEXT NOT NULL,
-                timestamp_utc TEXT NOT NULL,
-                timestamp_ms INTEGER NOT NULL,
-                level TEXT NOT NULL,
-                source TEXT NOT NULL,
-                thread_id TEXT NOT NULL,
-                line_number INTEGER NOT NULL,
-                end_line_number INTEGER NOT NULL,
-                byte_offset INTEGER NOT NULL,
-                message TEXT NOT NULL,
-                exception TEXT NOT NULL,
-                raw_text TEXT NOT NULL,
-                http_method TEXT NOT NULL,
-                url TEXT NOT NULL,
-                status_code INTEGER NOT NULL,
-                client_ip TEXT NOT NULL,
-                server_ip TEXT NOT NULL,
-                user_agent TEXT NOT NULL,
-                time_taken INTEGER NOT NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS ix_log_events_project_time ON log_events(project_id, timestamp_ms, log_file_id, line_number);
-            CREATE INDEX IF NOT EXISTS ix_log_events_log_file ON log_events(log_file_id, timestamp_ms);
-            CREATE INDEX IF NOT EXISTS ix_log_events_project_level ON log_events(project_id, level, timestamp_ms);
-            """;
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        _connectionFactory = connectionFactory;
     }
 
     public async Task InsertBatchAsync(IReadOnlyCollection<LogEvent> events, CancellationToken cancellationToken)
@@ -94,7 +49,7 @@ public sealed class SqliteLogEventStore : ILogEventStore
 
     public async Task<LogEventSearchResult> SearchAsync(LogEventSearchRequest request, CancellationToken cancellationToken)
     {
-        var limit = Math.Clamp(request.Limit, 1, 1000);
+        var limit = Math.Clamp(request.Limit, 1, EventSearchDefaults.MaxLimit);
         var offset = Math.Max(0, request.Offset);
         var query = BuildWhere(request);
 
@@ -223,9 +178,7 @@ public sealed class SqliteLogEventStore : ILogEventStore
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
     {
-        var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        return connection;
+        return await _connectionFactory.OpenAsync(cancellationToken);
     }
 
     private static QueryParts BuildWhere(LogEventSearchRequest request)
