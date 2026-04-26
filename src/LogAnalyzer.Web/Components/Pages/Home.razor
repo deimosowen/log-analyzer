@@ -1,0 +1,119 @@
+@page "/"
+@rendermode InteractiveServer
+@inject IMetadataRepository Metadata
+@inject NavigationManager Navigation
+
+<PageTitle>Projects</PageTitle>
+
+<div class="view-header">
+    <div>
+        <h1>Projects</h1>
+        <p>Upload logs, index them, and inspect time-correlated events.</p>
+    </div>
+</div>
+
+<section class="panel compact-form">
+    <div class="form-grid">
+        <label>
+            Name
+            <input class="form-control" @bind="newName" placeholder="Production incident 2026-04-21" />
+        </label>
+        <label>
+            Description
+            <input class="form-control" @bind="newDescription" placeholder="Short context" />
+        </label>
+        <button class="btn btn-primary" @onclick="CreateProject" disabled="@isBusy">Create</button>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="alert alert-danger mt-3">@error</div>
+    }
+</section>
+
+<section class="table-wrap mt-4">
+    <table class="table app-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Created</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (projects.Count == 0)
+            {
+                <tr>
+                    <td colspan="4" class="muted-cell">No projects yet.</td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var project in projects)
+                {
+                    <tr>
+                        <td class="strong">@project.Name</td>
+                        <td>@project.Description</td>
+                        <td>@project.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        <td class="row-actions">
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenProject(project.Id)">Open</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteProject(project.Id)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</section>
+
+@code {
+    private List<ProjectEntity> projects = [];
+    private string newName = string.Empty;
+    private string? newDescription;
+    private string? error;
+    private bool isBusy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProjects();
+    }
+
+    private async Task LoadProjects()
+    {
+        projects = (await Metadata.ListProjectsAsync(CancellationToken.None)).ToList();
+    }
+
+    private async Task CreateProject()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            error = "Project name is required.";
+            return;
+        }
+
+        isBusy = true;
+        try
+        {
+            var project = await Metadata.CreateProjectAsync(newName, newDescription, CancellationToken.None);
+            newName = string.Empty;
+            newDescription = null;
+            Navigation.NavigateTo($"/projects/{project.Id}");
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private void OpenProject(string projectId)
+    {
+        Navigation.NavigateTo($"/projects/{projectId}");
+    }
+
+    private async Task DeleteProject(string projectId)
+    {
+        await Metadata.DeleteProjectAsync(projectId, CancellationToken.None);
+        await LoadProjects();
+    }
+}

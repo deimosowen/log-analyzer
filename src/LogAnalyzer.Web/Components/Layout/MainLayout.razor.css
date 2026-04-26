@@ -1,0 +1,48 @@
+.app-shell {
+    min-height: 100vh;
+    background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+.app-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(255, 255, 255, 0.84);
+    backdrop-filter: blur(18px);
+}
+
+.app-main {
+    min-width: 0;
+}
+
+.content {
+    width: min(100%, 1720px);
+    margin: 0 auto;
+    padding: 1.25rem;
+}
+
+@media (max-width: 720px) {
+    .content {
+        padding: 0.85rem;
+    }
+}
+
+#blazor-error-ui {
+    background: #fff8db;
+    bottom: 0;
+    box-shadow: 0 -1px 12px rgba(15, 23, 42, 0.18);
+    display: none;
+    left: 0;
+    padding: 0.75rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}

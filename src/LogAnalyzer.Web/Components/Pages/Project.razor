@@ -1,0 +1,270 @@
+@page "/projects/{ProjectId}"
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@inject IMetadataRepository Metadata
+@inject ILogFileStorage Storage
+@inject ILogEventStore EventStore
+@inject IImportJobQueue ImportQueue
+@inject NavigationManager Navigation
+
+<PageTitle>Project</PageTitle>
+
+@if (project is null)
+{
+    <p>Project not found.</p>
+}
+else
+{
+    <div class="view-header">
+        <div>
+            <h1>@project.Name</h1>
+            <p>@project.Description</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-outline-secondary" @onclick="LoadData">Refresh</button>
+            <button class="btn btn-primary" @onclick="OpenAnalysis">Analysis</button>
+        </div>
+    </div>
+
+    <section class="panel">
+        <h2>Upload</h2>
+        <div class="upload-grid">
+            <label>
+                Timezone
+                <input class="form-control" @bind="timeZoneId" />
+            </label>
+            <label class="check-line">
+                <input type="checkbox" class="form-check-input" @bind="iisLogsAreUtc" />
+                IIS logs are UTC
+            </label>
+            <label class="check-line">
+                <input type="checkbox" class="form-check-input" @bind="combineMultiline" />
+                Combine multiline exceptions
+            </label>
+            <InputFile class="form-control file-input" OnChange="OnFilesSelected" multiple />
+            <button class="btn btn-primary" @onclick="StartUpload" disabled="@(!selectedFiles.Any() || uploadBusy)">Start import</button>
+        </div>
+        @if (selectedFiles.Any())
+        {
+            <div class="file-list">
+                @foreach (var file in selectedFiles)
+                {
+                    <span>@file.Name (@FormatBytes(file.Size))</span>
+                }
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(error))
+        {
+            <div class="alert alert-danger mt-3">@error</div>
+        }
+    </section>
+
+    <section class="panel mt-4">
+        <h2>Import progress</h2>
+        <div class="table-wrap">
+            <table class="table app-table">
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Files</th>
+                        <th>Lines</th>
+                        <th>Errors</th>
+                        <th>Current file</th>
+                        <th>Started</th>
+                        <th>Finished</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (uploads.Count == 0)
+                    {
+                        <tr><td colspan="7" class="muted-cell">No imports yet.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var upload in uploads)
+                        {
+                            <tr>
+                                <td><span class="status-pill @upload.Status">@upload.Status</span></td>
+                                <td>@upload.ProcessedFiles / @upload.TotalFiles</td>
+                                <td>@upload.ProcessedLines / @upload.TotalLines</td>
+                                <td>@upload.ErrorCount</td>
+                                <td>@upload.CurrentFile</td>
+                                <td>@upload.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                <td>@(upload.FinishedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "")</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel mt-4">
+        <h2>Logs</h2>
+        <div class="table-wrap">
+            <table class="table app-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Path</th>
+                        <th>Format</th>
+                        <th>Size</th>
+                        <th>Lines</th>
+                        <th>Events</th>
+                        <th>Errors/Warns</th>
+                        <th>First timestamp</th>
+                        <th>Last timestamp</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (logs.Count == 0)
+                    {
+                        <tr><td colspan="10" class="muted-cell">No indexed log files yet.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var log in FilteredLogs)
+                        {
+                            var stat = stats.GetValueOrDefault(log.Id);
+                            <tr>
+                                <td class="strong">@log.DisplayName</td>
+                                <td>@log.OriginalPath</td>
+                                <td>@log.Format</td>
+                                <td>@FormatBytes(log.SizeBytes)</td>
+                                <td>@log.LineCount</td>
+                                <td>@(stat?.EventCount ?? 0)</td>
+                                <td>@(stat?.ErrorCount ?? 0) / @(stat?.WarnCount ?? 0)</td>
+                                <td>@FormatTime(log.FirstTimestamp)</td>
+                                <td>@FormatTime(log.LastTimestamp)</td>
+                                <td><span class="status-pill @log.Status">@log.Status</span></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter] public string ProjectId { get; set; } = string.Empty;
+
+    private ProjectEntity? project;
+    private List<UploadSessionEntity> uploads = [];
+    private List<LogFileEntity> logs = [];
+    private IReadOnlyDictionary<string, LogFileEventStats> stats = new Dictionary<string, LogFileEventStats>();
+    private IReadOnlyList<IBrowserFile> selectedFiles = [];
+    private string timeZoneId = "Europe/Moscow";
+    private bool iisLogsAreUtc = true;
+    private bool combineMultiline = true;
+    private bool uploadBusy;
+    private string? error;
+    private readonly CancellationTokenSource refreshCts = new();
+
+    private IEnumerable<LogFileEntity> FilteredLogs => logs.OrderBy(log => log.DisplayName);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        _ = RefreshLoop();
+    }
+
+    private async Task LoadData()
+    {
+        project = await Metadata.GetProjectAsync(ProjectId, CancellationToken.None);
+        uploads = (await Metadata.ListUploadSessionsAsync(ProjectId, CancellationToken.None)).ToList();
+        logs = (await Metadata.ListLogFilesAsync(ProjectId, CancellationToken.None)).ToList();
+        stats = await EventStore.GetStatsByLogFileAsync(ProjectId, CancellationToken.None);
+    }
+
+    private void OnFilesSelected(InputFileChangeEventArgs args)
+    {
+        selectedFiles = args.GetMultipleFiles(1000);
+        error = null;
+    }
+
+    private async Task StartUpload()
+    {
+        error = null;
+        uploadBusy = true;
+        try
+        {
+            var upload = await Metadata.CreateUploadSessionAsync(
+                new UploadSessionCreateRequest(ProjectId, string.Join(", ", selectedFiles.Select(file => file.Name))),
+                CancellationToken.None);
+
+            await Metadata.UpdateUploadSessionAsync(upload.Id, new UploadProgressUpdate(Status: UploadStatuses.Uploading), CancellationToken.None);
+            foreach (var file in selectedFiles)
+            {
+                await using var stream = file.OpenReadStream(maxAllowedSize: 1024L * 1024L * 1024L);
+                await Storage.SaveOriginalAsync(ProjectId, upload.Id, file.Name, stream, CancellationToken.None);
+            }
+
+            await Metadata.UpdateUploadSessionAsync(upload.Id, new UploadProgressUpdate(Status: UploadStatuses.Uploaded), CancellationToken.None);
+            await ImportQueue.EnqueueAsync(
+                new ImportJob(ProjectId, upload.Id, new ImportOptions(timeZoneId, iisLogsAreUtc, combineMultiline)),
+                CancellationToken.None);
+
+            selectedFiles = [];
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            uploadBusy = false;
+        }
+    }
+
+    private void OpenAnalysis()
+    {
+        Navigation.NavigateTo($"/projects/{ProjectId}/analysis");
+    }
+
+    private async Task RefreshLoop()
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+            while (await timer.WaitForNextTickAsync(refreshCts.Token))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadData();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await refreshCts.CancelAsync();
+        refreshCts.Dispose();
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB"];
+        var value = (double)bytes;
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return $"{value:0.##} {units[unit]}";
+    }
+
+    private static string FormatTime(DateTimeOffset? value)
+    {
+        return value?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.ffff") ?? "";
+    }
+}

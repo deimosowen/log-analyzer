@@ -1,0 +1,81 @@
+.top-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    width: min(100%, 1720px);
+    min-height: 4.25rem;
+    margin: 0 auto;
+    padding: 0 1.25rem;
+}
+
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #111827;
+    text-decoration: none;
+}
+
+.brand:hover {
+    color: #111827;
+}
+
+.brand-mark {
+    display: grid;
+    place-items: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 0.7rem;
+    background: linear-gradient(135deg, #155eef, #0b8a7f);
+    color: #fff;
+    font-size: 0.82rem;
+    font-weight: 800;
+    box-shadow: 0 14px 30px rgba(21, 94, 239, 0.22);
+}
+
+.brand strong,
+.brand small {
+    display: block;
+    line-height: 1.1;
+}
+
+.brand small {
+    margin-top: 0.14rem;
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.nav-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.25rem;
+    padding: 0 0.8rem;
+    border-radius: 999px;
+    color: #475569;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.nav-link:hover,
+.nav-link.active {
+    background: #eef4ff;
+    color: #155eef;
+}
+
+@media (max-width: 720px) {
+    .top-nav {
+        padding: 0 0.85rem;
+    }
+
+    .brand small {
+        display: none;
+    }
+}

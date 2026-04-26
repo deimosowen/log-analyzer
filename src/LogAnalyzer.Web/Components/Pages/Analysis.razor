@@ -1,0 +1,266 @@
+@page "/projects/{ProjectId}/analysis"
+@rendermode InteractiveServer
+@inject IMetadataRepository Metadata
+@inject ILogEventStore EventStore
+@inject NavigationManager Navigation
+
+<PageTitle>Analysis</PageTitle>
+
+@if (project is null)
+{
+    <section class="empty-state">
+        <h1>Проект не найден</h1>
+        <button class="btn btn-primary" @onclick="BackToProjects">К проектам</button>
+    </section>
+}
+else
+{
+    <div class="analysis-shell">
+        <header class="analysis-hero">
+            <div class="hero-title">
+                <button class="icon-button" title="К проекту" @onclick="BackToProject">←</button>
+                <div>
+                    <span class="eyebrow">Анализ инцидента</span>
+                    <h1>@project.Name</h1>
+                </div>
+            </div>
+
+            <div class="window-control" aria-label="Окно корреляции">
+                <span>Окно</span>
+                <label>
+                    До
+                    <input type="number" class="form-control number-input" @bind="beforeSeconds" min="0" @bind:after="RefreshCorrelation" />
+                </label>
+                <label>
+                    После
+                    <input type="number" class="form-control number-input" @bind="afterSeconds" min="0" @bind:after="RefreshCorrelation" />
+                </label>
+            </div>
+
+            <label class="search-field">
+                Поиск
+                <input class="form-control" @bind="query" @bind:event="oninput" />
+            </label>
+
+            <label class="timezone-field">
+                Часовой пояс
+                <input class="form-control" @bind="displayTimeZoneId" />
+            </label>
+
+            <button class="btn btn-primary" @onclick="Refresh">Применить</button>
+            <button class="btn btn-outline-secondary" @onclick="ResetView">Сброс</button>
+        </header>
+
+        <section class="source-bar">
+            <div class="source-heading">
+                <strong>Логи</strong>
+                <span>выбрано @selectedLogIds.Count из @logs.Count</span>
+            </div>
+            <div class="source-chips">
+                @foreach (var log in logs)
+                {
+                    var stat = stats.GetValueOrDefault(log.Id);
+                    <label class="source-chip @(selectedLogIds.Contains(log.Id) ? "active" : "")">
+                        <input type="checkbox" checked="@selectedLogIds.Contains(log.Id)" @onchange="value => ToggleLog(log.Id, value)" />
+                        <span>
+                            <strong>@log.DisplayName</strong>
+                            <small>@(stat?.ErrorCount ?? 0) ошибок · @(stat?.WarnCount ?? 0) предупреждений</small>
+                        </span>
+                    </label>
+                }
+            </div>
+        </section>
+
+        <main class="@StageClass">
+            @if (showStep1)
+            {
+            <section class="problem-panel">
+                <div class="panel-heading problem-heading">
+                    <div>
+                        <span class="eyebrow">Шаг 1</span>
+                        <h2>Выберите проблему</h2>
+                    </div>
+                    <div class="panel-actions">
+                        <div class="level-row">
+                            @foreach (var level in ProblemLevels)
+                            {
+                                <label class="level-chip @(selectedLevels.Contains(level) ? "active" : "")">
+                                    <input type="checkbox" checked="@selectedLevels.Contains(level)" @onchange="value => ToggleLevel(level, value)" />
+                                    @level
+                                </label>
+                            }
+                        </div>
+                        <button class="ghost-button" @onclick="ToggleStep1">Скрыть</button>
+                    </div>
+                </div>
+
+                <div class="problem-table">
+                    <div class="problem-header">
+                        <span>время</span>
+                        <span>уровень</span>
+                        <span>лог</span>
+                        <span>сообщение</span>
+                    </div>
+                    <Virtualize @ref="problemVirtualize" Context="item" ItemsProvider="LoadProblems" ItemSize="48">
+                        <ItemContent>
+                            <button class="problem-row @(selectedEvent?.Id == item.Id ? "selected" : "")" @onclick="() => SelectProblem(item)">
+                                <span>@FormatTime(item.TimestampUtc)</span>
+                                <span class="level-pill @item.Level">@DisplayLevel(item.Level)</span>
+                                <span>@LogName(item.LogFileId)</span>
+                                <strong>@item.Message</strong>
+                            </button>
+                        </ItemContent>
+                        <Placeholder>
+                            <div class="problem-row loading-row">
+                                <span>Загрузка</span>
+                            </div>
+                        </Placeholder>
+                    </Virtualize>
+                </div>
+            </section>
+            }
+            else
+            {
+            <section class="collapsed-step">
+                <div>
+                    <span class="eyebrow">Шаг 1</span>
+                    <strong>@(selectedEvent is null ? "Проблема не выбрана" : selectedEvent.Message)</strong>
+                </div>
+                <button class="ghost-button" @onclick="ToggleStep1">Показать</button>
+            </section>
+            }
+
+            @if (showStep2)
+            {
+            <section class="correlation-panel @(selectedEvent is null ? "is-empty" : "")">
+                <div class="panel-heading correlation-heading">
+                    <div>
+                        <span class="eyebrow">Шаг 2</span>
+                        <h2>Проблемы в выбранном окне времени</h2>
+                    </div>
+                    <div class="panel-actions">
+                        @if (selectedEvent is not null)
+                        {
+                            <span>@CorrelationCountLabel · @beforeSeconds сек до / @afterSeconds сек после</span>
+                            <div class="segmented-control" aria-label="Режим отображения">
+                                <button class="@(correlationMode == CorrelationDisplayMode.Summary ? "active" : "")" @onclick="ShowCorrelationSummary">Сводка</button>
+                                <button class="@(correlationMode == CorrelationDisplayMode.Events ? "active" : "")" @onclick="ShowCorrelationEvents">Строки</button>
+                            </div>
+                        }
+                        <button class="ghost-button" @onclick="ToggleStep2">Скрыть</button>
+                    </div>
+                </div>
+
+                @if (selectedEvent is null)
+                {
+                    <div class="selection-empty">
+                        <strong>Выберите проблему выше</strong>
+                        <span>Здесь появятся проблемы из остальных логов за выбранное окно времени.</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="selected-problem-card">
+                        <span class="level-pill @selectedEvent.Level">@DisplayLevel(selectedEvent.Level)</span>
+                        <div>
+                            <strong>@selectedEvent.Message</strong>
+                            <small>@FormatTime(selectedEvent.TimestampUtc) · @LogName(selectedEvent.LogFileId) · line @selectedEvent.LineNumber</small>
+                        </div>
+                    </div>
+
+                    @if (correlatedEvents.Count == 0)
+                    {
+                        <div class="correlation-empty">В этом окне времени проблем не найдено.</div>
+                    }
+                    else if (correlationMode == CorrelationDisplayMode.Summary)
+                    {
+                        @if (IsCorrelationTruncated)
+                        {
+                            <div class="result-note">
+                                Показаны первые @correlatedEvents.Count из @correlatedTotalCount событий. Для полной картины сузьте окно или выберите меньше логов.
+                            </div>
+                        }
+                        <div class="correlation-table summary-table">
+                            <div class="correlation-header summary-header">
+                                <span>кол-во</span>
+                                <span>окно</span>
+                                <span>уровень</span>
+                                <span>логов</span>
+                                <span>группа</span>
+                            </div>
+                            @foreach (var group in correlationGroups)
+                            {
+                                <button class="correlation-line summary-line @(selectedEvent.Id == group.Representative.Id ? "active" : "")" @onclick="() => SelectProblem(group.Representative)">
+                                    <span class="count-pill">@group.Count</span>
+                                    <span>@FormatGroupWindow(group)</span>
+                                    <span class="level-pill @group.Level">@DisplayLevel(group.Level)</span>
+                                    <span>@group.LogCount</span>
+                                    <strong>@group.Title</strong>
+                                </button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        @if (IsCorrelationTruncated)
+                        {
+                            <div class="result-note">
+                                Показаны первые @correlatedEvents.Count из @correlatedTotalCount событий. Для полной картины сузьте окно или выберите меньше логов.
+                            </div>
+                        }
+                        <div class="correlation-table">
+                            <div class="correlation-header">
+                                <span>дельта</span>
+                                <span>время</span>
+                                <span>уровень</span>
+                                <span>лог</span>
+                                <span>сообщение</span>
+                            </div>
+                            @foreach (var item in correlatedEvents)
+                            {
+                                <button class="correlation-line @(selectedEvent.Id == item.Id ? "active" : "")" @onclick="() => SelectProblem(item)">
+                                    <span>@FormatDelta(item)</span>
+                                    <span>@FormatTime(item.TimestampUtc)</span>
+                                    <span class="level-pill @item.Level">@DisplayLevel(item.Level)</span>
+                                    <span>@LogName(item.LogFileId)</span>
+                                    <strong>@item.Message</strong>
+                                </button>
+                            }
+                        </div>
+                    }
+
+                    <details class="event-details">
+                        <summary>Детали выбранного события</summary>
+                        <dl class="details-grid">
+                            <dt>Источник</dt><dd>@selectedEvent.Source</dd>
+                            <dt>Поток</dt><dd>@selectedEvent.ThreadId</dd>
+                            <dt>Время</dt><dd>@FormatTime(selectedEvent.TimestampUtc)</dd>
+                            @if (!string.IsNullOrWhiteSpace(selectedEvent.HttpMethod) || selectedEvent.StatusCode > 0)
+                            {
+                                <dt>HTTP</dt><dd>@selectedEvent.HttpMethod @selectedEvent.Url @selectedEvent.StatusCode · @selectedEvent.TimeTaken ms</dd>
+                                <dt>Client</dt><dd>@selectedEvent.ClientIp</dd>
+                                <dt>Server</dt><dd>@selectedEvent.ServerIp</dd>
+                            }
+                        </dl>
+                        <pre>@selectedEvent.RawText</pre>
+                        @if (!string.IsNullOrWhiteSpace(selectedEvent.Exception))
+                        {
+                            <pre>@selectedEvent.Exception</pre>
+                        }
+                    </details>
+                }
+            </section>
+            }
+            else
+            {
+            <section class="collapsed-step">
+                <div>
+                    <span class="eyebrow">Шаг 2</span>
+                    <strong>@(selectedEvent is null ? "Окно корреляции скрыто" : CorrelationCountLabel)</strong>
+                </div>
+                <button class="ghost-button" @onclick="ToggleStep2">Показать</button>
+            </section>
+            }
+        </main>
+    </div>
+}
