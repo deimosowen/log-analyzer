@@ -33,13 +33,15 @@ else
 
                 <div class="window-control" aria-label="Окно корреляции">
                     <span>Окно</span>
-                    <label>
-                        <span>до</span>
+                    <label title="Секунд до выбранного события">
+                        <span>-</span>
                         <input type="number" class="form-control number-input" @bind="beforeSeconds" min="0" @bind:after="RefreshCorrelation" />
+                        <em>с</em>
                     </label>
-                    <label>
-                        <span>после</span>
+                    <label title="Секунд после выбранного события">
+                        <span>+</span>
                         <input type="number" class="form-control number-input" @bind="afterSeconds" min="0" @bind:after="RefreshCorrelation" />
+                        <em>с</em>
                     </label>
                 </div>
 
