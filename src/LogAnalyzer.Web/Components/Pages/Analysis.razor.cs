@@ -1,5 +1,6 @@
 using LogAnalyzer.Application;
 using LogAnalyzer.Application.Analysis;
+using LogAnalyzer.Application.Reporting;
 using LogAnalyzer.Application.Time;
 using LogAnalyzer.Domain;
 using LogAnalyzer.Web.Auth;
@@ -7,6 +8,7 @@ using LogAnalyzer.Web.Formatting;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.Web.Virtualization;
+using Microsoft.JSInterop;
 
 namespace LogAnalyzer.Web.Components.Pages;
 
@@ -21,6 +23,8 @@ public partial class Analysis
     }
 
     [Parameter] public string ProjectId { get; set; } = string.Empty;
+
+    [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
 
     private ProjectEntity? project;
     private CurrentUser currentUser = new("local-dev", "local@dev.local", "Локальный пользователь", true);
@@ -209,6 +213,36 @@ public partial class Analysis
     private void ShowCorrelationEvents()
     {
         correlationMode = CorrelationDisplayMode.Events;
+    }
+
+    private async Task ExportMarkdownReport()
+    {
+        if (project is null || selectedEvent is null)
+        {
+            return;
+        }
+
+        var report = IncidentMarkdownReportBuilder.Build(new IncidentMarkdownReportRequest(
+            project.Name,
+            displayTimeZoneId,
+            SelectedLogPreview,
+            query,
+            beforeSeconds,
+            afterSeconds,
+            selectedEvent,
+            correlatedEvents,
+            correlationGroups,
+            correlatedTotalCount,
+            FormatTime,
+            FormatDelta,
+            FormatGroupWindow,
+            LogName));
+
+        await JsRuntime.InvokeVoidAsync(
+            "logAnalyzerDownloads.downloadText",
+            report.FileName,
+            "text/markdown;charset=utf-8",
+            report.Content);
     }
 
     private void BackToProject()

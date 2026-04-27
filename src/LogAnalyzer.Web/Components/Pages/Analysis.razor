@@ -156,6 +156,7 @@ else
                                 <button class="@(correlationMode == CorrelationDisplayMode.Summary ? "active" : "")" @onclick="ShowCorrelationSummary">Сводка</button>
                                 <button class="@(correlationMode == CorrelationDisplayMode.Events ? "active" : "")" @onclick="ShowCorrelationEvents">Строки</button>
                             </div>
+                            <button class="ghost-button" @onclick="ExportMarkdownReport">Отчет MD</button>
                         }
                         <button class="ghost-button" @onclick="ToggleStep2">Скрыть</button>
                     </div>
