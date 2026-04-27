@@ -47,7 +47,13 @@ Each migrator writes applied versions into `schema_migrations`. Migration SQL li
 - SQLite events: `src/LogAnalyzer.Infrastructure/Sqlite/Migrations/Events/V###_*.cs`.
 - ClickHouse events: `src/LogAnalyzer.Infrastructure/ClickHouse/Migrations/Events/V###_*.cs`.
 
-To extend a schema, add the next `V###_*.cs` migration file in the relevant folder and register it in the matching migrator's ordered `Migrations` list.
+Migration files are discovered automatically through marker base classes:
+
+- SQLite metadata migrations inherit `SqliteMetadataMigration`.
+- SQLite event migrations inherit `SqliteEventMigration`.
+- ClickHouse event migrations inherit `ClickHouseEventMigration`.
+
+To extend a schema, add the next `V###_*.cs` file in the relevant folder and inherit the matching base class. The catalog will load it automatically, sort migrations by `Version`, and fail fast on duplicate or invalid versions.
 
 ## Authentication
 

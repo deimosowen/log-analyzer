@@ -1,10 +1,11 @@
 using LogAnalyzer.Infrastructure.Migrations;
+using LogAnalyzer.Infrastructure.Sqlite.Migrations;
 
 namespace LogAnalyzer.Infrastructure.Sqlite.Migrations.Metadata;
 
-internal static class V002_AddUsersAndProjectOwners
+internal sealed class V002_AddUsersAndProjectOwners : SqliteMetadataMigration
 {
-    public static DatabaseMigration Migration { get; } = DatabaseMigration.Create(
+    public override DatabaseMigration Migration { get; } = DatabaseMigration.Create(
         2,
         "Add users and project ownership",
         """

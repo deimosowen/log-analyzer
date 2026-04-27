@@ -1,10 +1,11 @@
 using LogAnalyzer.Infrastructure.Migrations;
+using LogAnalyzer.Infrastructure.ClickHouse.Migrations;
 
 namespace LogAnalyzer.Infrastructure.ClickHouse.Migrations.Events;
 
-internal static class V001_CreateLogEventSchema
+internal sealed class V001_CreateLogEventSchema : ClickHouseEventMigration
 {
-    public static DatabaseMigration Migration { get; } = DatabaseMigration.Create(
+    public override DatabaseMigration Migration { get; } = DatabaseMigration.Create(
         1,
         "Create log event schema",
         """

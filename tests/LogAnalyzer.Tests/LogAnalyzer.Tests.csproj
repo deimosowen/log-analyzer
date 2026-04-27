@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\LogAnalyzer.Domain\LogAnalyzer.Domain.csproj" />
     <ProjectReference Include="..\..\src\LogAnalyzer.Application\LogAnalyzer.Application.csproj" />
+    <ProjectReference Include="..\..\src\LogAnalyzer.Infrastructure\LogAnalyzer.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

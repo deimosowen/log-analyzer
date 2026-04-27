@@ -1,10 +1,11 @@
 using LogAnalyzer.Infrastructure.Migrations;
+using LogAnalyzer.Infrastructure.Sqlite.Migrations;
 
 namespace LogAnalyzer.Infrastructure.Sqlite.Migrations.Events;
 
-internal static class V001_CreateLogEventSchema
+internal sealed class V001_CreateLogEventSchema : SqliteEventMigration
 {
-    public static DatabaseMigration Migration { get; } = DatabaseMigration.Create(
+    public override DatabaseMigration Migration { get; } = DatabaseMigration.Create(
         1,
         "Create log event schema",
         """

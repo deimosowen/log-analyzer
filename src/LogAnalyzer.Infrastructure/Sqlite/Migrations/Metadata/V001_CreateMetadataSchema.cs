@@ -1,10 +1,11 @@
 using LogAnalyzer.Infrastructure.Migrations;
+using LogAnalyzer.Infrastructure.Sqlite.Migrations;
 
 namespace LogAnalyzer.Infrastructure.Sqlite.Migrations.Metadata;
 
-internal static class V001_CreateMetadataSchema
+internal sealed class V001_CreateMetadataSchema : SqliteMetadataMigration
 {
-    public static DatabaseMigration Migration { get; } = DatabaseMigration.Create(
+    public override DatabaseMigration Migration { get; } = DatabaseMigration.Create(
         1,
         "Create metadata schema",
         """

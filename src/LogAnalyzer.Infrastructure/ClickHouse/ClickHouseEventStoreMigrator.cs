@@ -1,10 +1,13 @@
 using LogAnalyzer.Infrastructure.Migrations;
-using LogAnalyzer.Infrastructure.ClickHouse.Migrations.Events;
+using LogAnalyzer.Infrastructure.ClickHouse.Migrations;
 
 namespace LogAnalyzer.Infrastructure.ClickHouse;
 
 public sealed class ClickHouseEventStoreMigrator : IDatabaseMigrator
 {
+    private static readonly IReadOnlyList<DatabaseMigration> MigrationSet =
+        DatabaseMigrationCatalog.Load<ClickHouseEventMigration>();
+
     private readonly ClickHouseSqlClient _client;
 
     public ClickHouseEventStoreMigrator(ClickHouseSqlClient client)
@@ -14,10 +17,7 @@ public sealed class ClickHouseEventStoreMigrator : IDatabaseMigrator
 
     public string StoreName => "clickhouse_events";
 
-    private IReadOnlyList<DatabaseMigration> Migrations =>
-    [
-        V001_CreateLogEventSchema.Migration
-    ];
+    private IReadOnlyList<DatabaseMigration> Migrations => MigrationSet;
 
     public async Task MigrateAsync(CancellationToken cancellationToken)
     {
