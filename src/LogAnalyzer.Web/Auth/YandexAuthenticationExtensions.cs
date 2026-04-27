@@ -22,6 +22,8 @@ public static class YandexAuthenticationExtensions
         services.Configure<AppAuthenticationOptions>(configuration.GetSection("Authentication"));
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
+        services.AddMemoryCache();
+        services.AddSingleton<YandexOAuthStateDataFormat>();
 
         var authOptions = configuration.GetSection("Authentication").Get<AppAuthenticationOptions>() ?? new();
         if (!authOptions.Enabled)
@@ -57,6 +59,12 @@ public static class YandexAuthenticationExtensions
                 {
                     OnCreatingTicket = CreateYandexTicketAsync
                 };
+            });
+
+        services.AddOptions<OAuthOptions>(YandexScheme)
+            .Configure<YandexOAuthStateDataFormat>((options, stateDataFormat) =>
+            {
+                options.StateDataFormat = stateDataFormat;
             });
 
         services.AddAuthorization();
