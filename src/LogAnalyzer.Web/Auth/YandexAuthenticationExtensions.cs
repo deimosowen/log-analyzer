@@ -2,8 +2,10 @@ using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Json;
 using LogAnalyzer.Application;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OAuth;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 
 namespace LogAnalyzer.Web.Auth;
@@ -57,7 +59,8 @@ public static class YandexAuthenticationExtensions
                 options.SaveTokens = false;
                 options.Events = new OAuthEvents
                 {
-                    OnCreatingTicket = CreateYandexTicketAsync
+                    OnCreatingTicket = CreateYandexTicketAsync,
+                    OnRedirectToAuthorizationEndpoint = RedirectToAuthorizationEndpoint
                 };
             });
 
@@ -82,6 +85,19 @@ public static class YandexAuthenticationExtensions
         app.UseAuthentication();
         app.UseAuthorization();
         return app;
+    }
+
+    private static Task RedirectToAuthorizationEndpoint(RedirectContext<OAuthOptions> context)
+    {
+        var options = context.HttpContext.RequestServices.GetRequiredService<IOptions<AppAuthenticationOptions>>().Value;
+        if (!TryBuildPublicCallbackUri(options.PublicOrigin, context.Options.CallbackPath, out var publicCallbackUri))
+        {
+            context.Response.Redirect(context.RedirectUri);
+            return Task.CompletedTask;
+        }
+
+        context.Response.Redirect(ReplaceRedirectUri(context.RedirectUri, publicCallbackUri));
+        return Task.CompletedTask;
     }
 
     private static async Task CreateYandexTicketAsync(OAuthCreatingTicketContext context)
@@ -180,5 +196,59 @@ public static class YandexAuthenticationExtensions
 
         var domain = email[(atIndex + 1)..];
         return allowedDomains.Any(allowed => string.Equals(allowed.Trim(), domain, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool TryBuildPublicCallbackUri(
+        string? publicOrigin,
+        PathString callbackPath,
+        out string callbackUri)
+    {
+        callbackUri = string.Empty;
+        if (string.IsNullOrWhiteSpace(publicOrigin) ||
+            !Uri.TryCreate(publicOrigin, UriKind.Absolute, out var origin) ||
+            string.IsNullOrWhiteSpace(origin.Scheme) ||
+            string.IsNullOrWhiteSpace(origin.Host))
+        {
+            return false;
+        }
+
+        var builder = new UriBuilder(origin.Scheme, origin.Host, origin.IsDefaultPort ? -1 : origin.Port)
+        {
+            Path = callbackPath.HasValue ? callbackPath.Value! : "/",
+            Query = string.Empty
+        };
+        callbackUri = builder.Uri.AbsoluteUri;
+        return true;
+    }
+
+    private static string ReplaceRedirectUri(string authorizationEndpoint, string publicCallbackUri)
+    {
+        var builder = new UriBuilder(authorizationEndpoint);
+        var query = QueryHelpers.ParseQuery(builder.Query);
+        var parameters = new List<KeyValuePair<string, string?>>();
+        var redirectUriWasFound = false;
+
+        foreach (var parameter in query)
+        {
+            if (parameter.Key.Equals("redirect_uri", StringComparison.Ordinal))
+            {
+                parameters.Add(new KeyValuePair<string, string?>(parameter.Key, publicCallbackUri));
+                redirectUriWasFound = true;
+                continue;
+            }
+
+            foreach (var value in parameter.Value)
+            {
+                parameters.Add(new KeyValuePair<string, string?>(parameter.Key, value));
+            }
+        }
+
+        if (!redirectUriWasFound)
+        {
+            parameters.Add(new KeyValuePair<string, string?>("redirect_uri", publicCallbackUri));
+        }
+
+        builder.Query = QueryString.Create(parameters).ToUriComponent().TrimStart('?');
+        return builder.Uri.AbsoluteUri;
     }
 }

@@ -18,6 +18,7 @@ services:
       ClickHouse__Username: "${CLICKHOUSE_USER:-default}"
       ClickHouse__Password: "${CLICKHOUSE_PASSWORD:-}"
       Authentication__Enabled: "${AUTHENTICATION_ENABLED:-true}"
+      Authentication__PublicOrigin: "${PUBLIC_ORIGIN:-}"
       Authentication__Yandex__ClientId: "${YANDEX_CLIENT_ID}"
       Authentication__Yandex__ClientSecret: "${YANDEX_CLIENT_SECRET}"
       Authentication__Yandex__CallbackPath: "/signin-yandex"

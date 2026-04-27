@@ -64,6 +64,7 @@ For Yandex OAuth, set:
 ```json
 "Authentication": {
   "Enabled": true,
+  "PublicOrigin": "https://log-analyzer.example.com",
   "AllowedEmailDomains": [ "example.com" ],
   "Yandex": {
     "ClientId": "<client-id>",
@@ -74,6 +75,7 @@ For Yandex OAuth, set:
 ```
 
 When `AllowedEmailDomains` is empty, any verified Yandex email domain is accepted. When it contains domains, only matching email domains can sign in.
+Set `PublicOrigin` on production deployments behind a reverse proxy so the OAuth redirect URI is generated with the public HTTPS host instead of the container's internal HTTP address.
 
 ## Run
 
@@ -104,8 +106,10 @@ docker compose up -d
 For Yandex OAuth on a server, add this redirect URI in the Yandex app:
 
 ```text
-http(s)://<your-host>/signin-yandex
+https://<your-host>/signin-yandex
 ```
+
+Also set `PUBLIC_ORIGIN=https://<your-host>` in `.env`.
 
 `docker-compose.yml` keeps SQLite metadata and uploaded files in named volumes and stores indexed log events in ClickHouse. The image does not include local `appsettings*.json`; production settings are passed through environment variables.
 
