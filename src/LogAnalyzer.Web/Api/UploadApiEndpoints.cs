@@ -1,6 +1,7 @@
 using LogAnalyzer.Application;
 using LogAnalyzer.Application.Time;
 using LogAnalyzer.Domain;
+using LogAnalyzer.Infrastructure.Storage;
 using LogAnalyzer.Web.Auth;
 using LogAnalyzer.Web.Services;
 using Microsoft.Extensions.Options;
@@ -52,6 +53,7 @@ internal static class UploadApiEndpoints
         HttpContext context,
         IMetadataRepository metadata,
         ILogFileStorage storage,
+        IOptions<StorageOptions> storageOptions,
         IOptions<AppAuthenticationOptions> authOptions,
         CancellationToken cancellationToken)
     {
@@ -72,12 +74,27 @@ internal static class UploadApiEndpoints
             return Results.NotFound();
         }
 
+        var form = await request.ReadFormAsync(cancellationToken);
+        var maxUploadBytes = storageOptions.Value.MaxUploadBytes;
+        var oversizedFile = FindOversizedFile(form.Files, maxUploadBytes);
+        if (oversizedFile is not null)
+        {
+            await metadata.UpdateUploadSessionAsync(
+                uploadId,
+                new UploadProgressUpdate(Status: UploadStatuses.Failed, FinishedAt: DateTimeOffset.UtcNow),
+                cancellationToken);
+
+            return Results.Problem(
+                title: "Файл превышает допустимый размер загрузки.",
+                detail: $"Файл \"{oversizedFile.FileName}\" имеет размер {FormatBytes(oversizedFile.Length)}. Максимум: {FormatBytes(maxUploadBytes)}.",
+                statusCode: StatusCodes.Status413PayloadTooLarge);
+        }
+
         await metadata.UpdateUploadSessionAsync(
             uploadId,
             new UploadProgressUpdate(Status: UploadStatuses.Uploading),
             cancellationToken);
 
-        var form = await request.ReadFormAsync(cancellationToken);
         foreach (var file in form.Files)
         {
             await using var stream = file.OpenReadStream();
@@ -176,5 +193,24 @@ internal static class UploadApiEndpoints
             cancellationToken);
 
         return Results.Accepted();
+    }
+
+    private static IFormFile? FindOversizedFile(IFormFileCollection files, long maxUploadBytes)
+    {
+        return files.FirstOrDefault(file => file.Length > maxUploadBytes);
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB"];
+        var value = (double)bytes;
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return $"{value:0.##} {units[unit]}";
     }
 }

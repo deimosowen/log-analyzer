@@ -2,15 +2,23 @@ using LogAnalyzer.Application;
 using LogAnalyzer.Application.Dashboard;
 using LogAnalyzer.Infrastructure;
 using LogAnalyzer.Infrastructure.Migrations;
+using LogAnalyzer.Infrastructure.Storage;
 using LogAnalyzer.Web.Api;
 using LogAnalyzer.Web.Auth;
 using LogAnalyzer.Web.Components;
 using LogAnalyzer.Web.Services;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
+var maxUploadBytes = builder.Configuration.GetValue<long?>("Storage:MaxUploadBytes") ??
+                     StorageDefaults.MaxUploadBytes;
 
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = maxUploadBytes;
+});
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders =
@@ -20,6 +28,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
+});
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = maxUploadBytes;
 });
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
