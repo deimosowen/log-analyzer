@@ -1,0 +1,63 @@
+@page "/about"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+
+<PageTitle>О проекте</PageTitle>
+
+<div class="about-shell">
+    <header class="about-hero">
+        <div>
+            <span class="eyebrow">Open source</span>
+            <h1>@ApplicationInfo.Name</h1>
+            <p>
+                Инструмент для разбора инцидентов по логам: загрузите архивы или отдельные файлы,
+                выберите проблемное событие и получите связанные события из других логов в нужном временном окне.
+            </p>
+        </div>
+        <div class="about-version">
+            <span>Версия</span>
+            <strong>@ApplicationInfo.Version</strong>
+        </div>
+    </header>
+
+    <section class="about-grid">
+        <article class="about-panel">
+            <span class="eyebrow">Зачем нужен</span>
+            <h2>Быстрее понять контекст ошибки</h2>
+            <p>
+                Когда инцидент затрагивает несколько сервисов, ручной поиск по разным логам быстро превращается
+                в долгую сверку времени, часовых поясов и похожих сообщений. Log Analyzer собирает эти данные
+                в одном месте и помогает увидеть, что происходило вокруг выбранной проблемы.
+            </p>
+        </article>
+
+        <article class="about-panel">
+            <span class="eyebrow">Что умеет</span>
+            <h2>Корреляция событий по времени</h2>
+            <ul class="about-list">
+                <li>загрузка логов и ZIP-архивов;</li>
+                <li>индексация событий приложения и IIS W3C;</li>
+                <li>поиск ошибок, предупреждений и фатальных событий;</li>
+                <li>анализ соседних событий с учетом смещения времени;</li>
+                <li>выгрузка отчета по найденному окну в Markdown.</li>
+            </ul>
+        </article>
+
+        <article class="about-panel">
+            <span class="eyebrow">Лицензия</span>
+            <h2>@ApplicationInfo.LicenseName</h2>
+            <p>
+                Проект распространяется как open source под лицензией MIT. Код можно использовать,
+                изучать, дорабатывать и адаптировать под внутренние сценарии анализа логов.
+            </p>
+        </article>
+
+        <article class="about-panel">
+            <span class="eyebrow">Исходный код</span>
+            <h2>GitHub</h2>
+            <p>Репозиторий проекта открыт для просмотра, задач и предложений по улучшению.</p>
+            <a class="btn btn-primary" href="@ApplicationInfo.RepositoryUrl" target="_blank" rel="noopener noreferrer">
+                Открыть GitHub
+            </a>
+        </article>
+    </section>
+</div>

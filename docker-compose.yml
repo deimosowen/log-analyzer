@@ -1,6 +1,6 @@
 services:
   log-analyzer:
-    image: deimosowen/log-analyzer:1.0.0
+    image: deimosowen/log-analyzer:1.0.1
     restart: unless-stopped
     depends_on:
       clickhouse:

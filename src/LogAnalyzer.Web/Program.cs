@@ -1,4 +1,5 @@
 using LogAnalyzer.Application;
+using LogAnalyzer.Application.Dashboard;
 using LogAnalyzer.Infrastructure;
 using LogAnalyzer.Infrastructure.Migrations;
 using LogAnalyzer.Web.Api;
@@ -23,6 +24,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddScoped<UserDashboardService>();
 builder.Services.AddLogAnalyzerAuthentication(builder.Configuration);
 builder.Services.AddLogAnalyzerInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<ImportCancellationRegistry>();

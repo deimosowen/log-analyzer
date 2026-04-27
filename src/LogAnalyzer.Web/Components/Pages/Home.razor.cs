@@ -1,5 +1,6 @@
+using System.Globalization;
 using LogAnalyzer.Application;
-using LogAnalyzer.Domain;
+using LogAnalyzer.Application.Dashboard;
 using LogAnalyzer.Web.Auth;
 using Microsoft.AspNetCore.Components;
 
@@ -8,18 +9,14 @@ namespace LogAnalyzer.Web.Components.Pages;
 public partial class Home
 {
     private CurrentUser currentUser = new("local-dev", "local@dev.local", "Локальный пользователь", true);
-    private List<ProjectEntity> projects = [];
-    private Dictionary<string, ProjectSummary> summaries = new(StringComparer.OrdinalIgnoreCase);
+    private UserDashboardSummary dashboard = UserDashboardSummary.Empty;
     private string newName = string.Empty;
     private string? newDescription;
     private string? error;
     private bool isBusy;
-    private int logCount;
-    private long eventCount;
-    private long problemCount;
 
     [Inject] private IMetadataRepository Metadata { get; set; } = null!;
-    [Inject] private ILogEventStore EventStore { get; set; } = null!;
+    [Inject] private UserDashboardService DashboardService { get; set; } = null!;
     [Inject] private ICurrentUserService CurrentUserService { get; set; } = null!;
     [Inject] private NavigationManager Navigation { get; set; } = null!;
 
@@ -31,24 +28,7 @@ public partial class Home
 
     private async Task LoadDashboard()
     {
-        projects = (await Metadata.ListProjectsAsync(currentUser.Id, CancellationToken.None)).ToList();
-        summaries.Clear();
-        logCount = 0;
-        eventCount = 0;
-        problemCount = 0;
-
-        foreach (var project in projects)
-        {
-            var logs = await Metadata.ListLogFilesAsync(project.Id, CancellationToken.None);
-            var stats = await EventStore.GetStatsByLogFileAsync(project.Id, CancellationToken.None);
-            var projectEvents = stats.Values.Sum(static item => item.EventCount);
-            var projectProblems = stats.Values.Sum(static item => item.ErrorCount + item.WarnCount);
-
-            logCount += logs.Count;
-            eventCount += projectEvents;
-            problemCount += projectProblems;
-            summaries[project.Id] = new ProjectSummary(logs.Count, projectEvents, projectProblems);
-        }
+        dashboard = await DashboardService.GetForUserAsync(currentUser.Id, CancellationToken.None);
     }
 
     private async Task CreateProject()
@@ -85,5 +65,13 @@ public partial class Home
         await LoadDashboard();
     }
 
-    private sealed record ProjectSummary(int LogCount, long EventCount, long ProblemCount);
+    private static string FormatCount(long value)
+    {
+        return value.ToString("N0", CultureInfo.GetCultureInfo("ru-RU"));
+    }
+
+    private static string FormatLocalDate(DateTimeOffset value)
+    {
+        return value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+    }
 }

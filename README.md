@@ -2,6 +2,16 @@
 
 Blazor Server application for uploading, indexing, and correlating application logs and IIS W3C logs by time.
 
+Repository: https://github.com/deimosowen/log-analyzer
+
+License: MIT
+
+## Purpose
+
+Log Analyzer helps investigate incidents when the useful context is spread across several logs. Create an incident project, upload logs, pick a problematic event, and inspect related events in the same time window with timezone offsets applied.
+
+The main dashboard shows the current user's incident count, uploads, analyzed logs, indexed events, and problem events.
+
 ## Architecture
 
 - `LogAnalyzer.Domain`
@@ -91,8 +101,8 @@ Open `http://localhost:5071`.
 Build and push the application image:
 
 ```powershell
-docker build -t deimosowen/log-analyzer:1.0.0 .
-docker push deimosowen/log-analyzer:1.0.0
+docker build -t deimosowen/log-analyzer:1.0.1 .
+docker push deimosowen/log-analyzer:1.0.1
 ```
 
 Deploy with ClickHouse:

@@ -1,14 +1,14 @@
 @page "/"
 @rendermode InteractiveServer
 
-<PageTitle>Проекты</PageTitle>
+<PageTitle>Дашборд</PageTitle>
 
 <div class="dashboard-shell">
     <header class="dashboard-header">
         <div>
             <span class="eyebrow">Рабочая область</span>
-            <h1>Проекты с логами</h1>
-            <p>Загружайте логи, выбирайте проблемное событие и смотрите, что происходило рядом по времени.</p>
+            <h1>Дашборд инцидентов</h1>
+            <p>Сводка по вашим проектам, загруженным логам и найденным проблемным событиям.</p>
         </div>
         <div class="user-badge">
             <span>@currentUser.DisplayName</span>
@@ -16,29 +16,44 @@
         </div>
     </header>
 
-    <section class="metric-grid">
+    <section class="metric-grid dashboard-metrics">
         <div class="metric-tile">
-            <span>Проекты</span>
-            <strong>@projects.Count</strong>
+            <span>Инциденты</span>
+            <strong>@FormatCount(dashboard.IncidentCount)</strong>
+            <small>проектов создано</small>
+        </div>
+        <div class="metric-tile">
+            <span>Загрузки</span>
+            <strong>@FormatCount(dashboard.UploadCount)</strong>
+            <small>@FormatCount(dashboard.CompletedUploadCount) завершено</small>
         </div>
         <div class="metric-tile">
             <span>Логи</span>
-            <strong>@logCount</strong>
+            <strong>@FormatCount(dashboard.AnalyzedLogCount)</strong>
+            <small>из @FormatCount(dashboard.LogCount) распознано</small>
+        </div>
+        <div class="metric-tile">
+            <span>Строки</span>
+            <strong>@FormatCount(dashboard.LineCount)</strong>
+            <small>прошло через индексатор</small>
         </div>
         <div class="metric-tile">
             <span>События</span>
-            <strong>@eventCount</strong>
+            <strong>@FormatCount(dashboard.EventCount)</strong>
+            <small>доступно для поиска</small>
         </div>
         <div class="metric-tile accent">
             <span>Проблемы</span>
-            <strong>@problemCount</strong>
+            <strong>@FormatCount(dashboard.ProblemCount)</strong>
+            <small>errors и warnings</small>
         </div>
     </section>
 
-    <section class="create-project-panel">
+    <section class="dashboard-command-strip">
         <div>
             <span class="eyebrow">Новый разбор</span>
-            <h2>Создать проект</h2>
+            <h2>Создать инцидент</h2>
+            <p>Один проект лучше держать вокруг одной проблемы, релиза или временного окна.</p>
         </div>
         <div class="create-project-form">
             <label>
@@ -61,35 +76,43 @@
         <div class="section-title">
             <div>
                 <span class="eyebrow">Ваши проекты</span>
-                <h2>Последние разборы</h2>
+                <h2>Последние инциденты</h2>
             </div>
+            @if (dashboard.LastActivityAt is not null)
+            {
+                <small>Последняя активность: @FormatLocalDate(dashboard.LastActivityAt.Value)</small>
+            }
         </div>
 
-        @if (projects.Count == 0)
+        @if (dashboard.Projects.Count == 0)
         {
             <div class="empty-state">
-                <h2>Пока нет проектов</h2>
+                <h2>Пока нет инцидентов</h2>
                 <p>Создайте первый проект, загрузите логи и откройте анализ инцидента.</p>
             </div>
         }
         else
         {
             <div class="project-grid">
-                @foreach (var project in projects)
+                @foreach (var summary in dashboard.Projects)
                 {
-                    var summary = summaries.GetValueOrDefault(project.Id);
+                    var project = summary.Project;
                     <article class="project-card">
                         <div>
                             <h3>@project.Name</h3>
                             <p>@project.Description</p>
                         </div>
                         <div class="project-card-stats">
-                            <span>@(summary?.LogCount ?? 0) логов</span>
-                            <span>@(summary?.EventCount ?? 0) событий</span>
-                            <span>@(summary?.ProblemCount ?? 0) проблем</span>
+                            <span>@FormatCount(summary.AnalyzedLogCount) / @FormatCount(summary.LogCount) логов</span>
+                            <span>@FormatCount(summary.EventCount) событий</span>
+                            <span>@FormatCount(summary.ProblemCount) проблем</span>
+                            @if (summary.ImportErrorCount > 0)
+                            {
+                                <span class="danger">@FormatCount(summary.ImportErrorCount) ошибок импорта</span>
+                            }
                         </div>
                         <div class="project-card-footer">
-                            <small>@project.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</small>
+                            <small>@FormatLocalDate(summary.LastActivityAt)</small>
                             <div class="row-actions">
                                 <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenProject(project.Id)">Открыть</button>
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteProject(project.Id)">Удалить</button>

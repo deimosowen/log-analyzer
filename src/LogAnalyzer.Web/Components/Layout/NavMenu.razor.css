@@ -52,6 +52,7 @@
     align-items: center;
     gap: 0.35rem;
     margin-left: auto;
+    overflow-x: auto;
 }
 
 .nav-link {
@@ -69,6 +70,10 @@
 .nav-link.active {
     background: #eef4ff;
     color: #155eef;
+}
+
+.nav-link.external {
+    color: #0c8f71;
 }
 
 .nav-user {
@@ -97,6 +102,16 @@
     }
 
     .brand small {
+        display: none;
+    }
+
+    .nav-link {
+        min-height: 2rem;
+        padding: 0 0.58rem;
+        font-size: 0.78rem;
+    }
+
+    .nav-link.external {
         display: none;
     }
 
