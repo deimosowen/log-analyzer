@@ -527,195 +527,209 @@ label {
     font-weight: 800;
 }
 
-.about-shell {
+.about-page {
     display: grid;
-    gap: 1.1rem;
+    gap: 0.85rem;
 }
 
-.about-hero {
+.about-compact-hero,
+.about-workflow-panel,
+.about-detail-main,
+.about-source-line {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: var(--shadow-soft);
+}
+
+.about-compact-hero {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(17rem, 24rem);
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 25rem);
     gap: 1rem;
     align-items: stretch;
-    min-height: 21rem;
     padding: 1rem;
-    border: 1px solid var(--line);
-    border-radius: 8px;
     background:
-        linear-gradient(135deg, rgba(15, 107, 143, 0.10), transparent 46%),
-        linear-gradient(225deg, rgba(12, 143, 113, 0.12), rgba(255, 255, 255, 0.88)),
-        var(--surface-solid);
-    box-shadow: var(--shadow-soft);
+        linear-gradient(135deg, rgba(15, 107, 143, 0.08), transparent 42%),
+        linear-gradient(225deg, rgba(12, 143, 113, 0.08), rgba(255, 255, 255, 0.94)),
+        #fff;
 }
 
-.about-hero-main {
+.about-title-block {
     display: grid;
     align-content: center;
-    justify-items: start;
-    max-width: 54rem;
-    padding: clamp(1rem, 3vw, 2.2rem);
-}
-
-.about-hero h1 {
-    margin: 0;
-    max-width: 48rem;
-    font-size: clamp(2rem, 4vw, 4.2rem);
-    line-height: 1.1;
-}
-
-.about-hero p {
-    max-width: 48rem;
-    margin: 0.7rem 0 0;
-    color: var(--muted);
-    font-size: 1rem;
-    line-height: 1.6;
-    font-weight: 700;
-}
-
-.about-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.55rem;
-    margin-top: 1.2rem;
-}
-
-.about-meta-panel {
-    display: grid;
-    align-content: end;
-    gap: 0.65rem;
-    padding: 1rem;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.68);
-    backdrop-filter: blur(10px);
-}
-
-.about-meta-panel div {
-    display: grid;
-    gap: 0.18rem;
-    min-height: 4.8rem;
-    padding: 0.78rem;
-    border: 1px solid rgba(15, 107, 143, 0.14);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.78);
-}
-
-.about-meta-panel span,
-.repo-link span {
-    color: var(--muted);
-    font-size: 0.72rem;
-    font-weight: 900;
-    text-transform: uppercase;
-}
-
-.about-meta-panel strong {
-    color: var(--ink);
-    font-size: 1.32rem;
-    line-height: 1;
-}
-
-.about-flow {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem;
-}
-
-.about-flow article,
-.about-capabilities article {
-    display: grid;
-    align-content: start;
-    gap: 0.35rem;
-    padding: 1rem;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.88);
-    box-shadow: var(--shadow-soft);
-}
-
-.about-flow article {
+    max-width: 58rem;
     min-height: 10rem;
 }
 
-.about-flow article > span {
-    color: var(--brand);
-    font-family: "JetBrains Mono", Consolas, monospace;
-    font-size: 0.76rem;
-    font-weight: 900;
-}
-
-.about-flow h2,
-.about-story h2,
-.about-open-source h2 {
+.about-title-block h1 {
     margin: 0;
-    font-size: 1.18rem;
+    font-size: 2rem;
+    line-height: 1.08;
 }
 
-.about-flow p,
-.about-story p,
-.about-capabilities p,
-.about-open-source p {
-    margin: 0.35rem 0 0;
+.about-title-block p,
+.about-problem-strip p,
+.about-workflow p,
+.about-detail-main p,
+.about-capability-list p,
+.about-source-line p {
+    margin: 0.38rem 0 0;
     color: var(--muted);
     line-height: 1.55;
     font-weight: 700;
 }
 
-.about-content-grid {
+.about-title-block p {
+    max-width: 49rem;
+}
+
+.about-facts {
     display: grid;
-    grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.8fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+    margin: 0;
+}
+
+.about-facts div {
+    display: grid;
+    align-content: center;
+    gap: 0.2rem;
+    min-height: 5.2rem;
+    padding: 0.7rem;
+    border: 1px solid rgba(15, 107, 143, 0.14);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.74);
+}
+
+.about-facts dt,
+.about-problem-strip span,
+.about-workflow article > span {
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.about-facts dd {
+    margin: 0;
+    color: var(--ink);
+    font-size: 1rem;
+    font-weight: 900;
+}
+
+.about-problem-strip {
+    display: grid;
+    grid-template-columns: minmax(14rem, 0.42fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: center;
+    min-height: 5rem;
+    padding: 0.85rem 1rem;
+    border-radius: 8px;
+    background: #121820;
+    color: #fff;
+}
+
+.about-problem-strip strong {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 1rem;
+}
+
+.about-problem-strip p {
+    color: rgba(243, 247, 250, 0.78);
+}
+
+.about-workflow-panel {
+    padding: 0.9rem;
+}
+
+.about-workflow {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.about-workflow article {
+    display: grid;
+    align-content: start;
+    gap: 0.28rem;
+    min-height: 9rem;
+    padding: 0.85rem;
+    border-right: 1px solid rgba(116, 131, 153, 0.18);
+}
+
+.about-workflow article:last-child {
+    border-right: 0;
+}
+
+.about-workflow article > span {
+    color: var(--brand);
+    font-family: "JetBrains Mono", Consolas, monospace;
+}
+
+.about-workflow h3,
+.about-capability-list h3,
+.about-detail-main h2,
+.about-source-line h2 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.about-details-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(18rem, 0.9fr);
     gap: 0.85rem;
 }
 
-.about-story,
-.about-open-source {
+.about-detail-main {
+    display: grid;
+    align-content: center;
+    min-height: 15rem;
     padding: 1rem;
+}
+
+.about-detail-main h2 {
+    max-width: 34rem;
+    font-size: 1.45rem;
+}
+
+.about-capability-list {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.about-capability-list article {
+    min-height: 4.6rem;
+    padding: 0.8rem;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.88);
     box-shadow: var(--shadow-soft);
 }
 
-.about-story {
+.about-source-line {
     display: grid;
-    align-content: center;
-    min-height: 18rem;
-}
-
-.about-story h2 {
-    max-width: 34rem;
-    font-size: 1.55rem;
-}
-
-.about-capabilities {
-    display: grid;
-    gap: 0.65rem;
-}
-
-.about-capabilities h3 {
-    margin: 0;
-    font-size: 0.98rem;
-}
-
-.about-open-source {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(18rem, 28rem);
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 1rem;
     align-items: center;
+    padding: 0.95rem 1rem;
 }
 
 .repo-link {
-    display: grid;
-    gap: 0.25rem;
-    min-height: 5.8rem;
-    padding: 1rem;
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.7rem;
+    max-width: 100%;
     border: 1px solid rgba(15, 107, 143, 0.20);
     border-radius: 8px;
-    background: linear-gradient(135deg, var(--brand-soft), rgba(255, 255, 255, 0.8));
-    text-decoration: none;
-}
-
-.repo-link strong {
+    padding: 0 0.85rem;
+    background: var(--brand-soft);
     color: var(--brand-strong);
-    font-size: 1rem;
+    font-weight: 900;
+    text-decoration: none;
     overflow-wrap: anywhere;
 }
 
@@ -1488,10 +1502,10 @@ pre {
     .dashboard-header,
     .project-header,
     .dashboard-command-strip,
-    .about-hero,
-    .about-flow,
-    .about-content-grid,
-    .about-open-source,
+    .about-compact-hero,
+    .about-problem-strip,
+    .about-details-grid,
+    .about-source-line,
     .create-project-panel,
     .create-project-form,
     .upload-panel,
@@ -1513,6 +1527,19 @@ pre {
 
     .metric-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .about-workflow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem;
+        border: 0;
+        background: transparent;
+    }
+
+    .about-workflow article {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
     }
 
     .window-control {
@@ -1583,10 +1610,46 @@ pre {
 
     .metric-grid,
     .project-grid,
-    .about-flow,
-    .about-content-grid,
-    .about-open-source {
+    .about-workflow,
+    .about-details-grid,
+    .about-source-line {
         grid-template-columns: 1fr;
+    }
+
+    .about-compact-hero {
+        gap: 0.7rem;
+        padding: 0.72rem;
+    }
+
+    .about-title-block {
+        min-height: 0;
+    }
+
+    .about-title-block h1 {
+        font-size: 1.72rem;
+    }
+
+    .about-title-block p {
+        font-size: 0.9rem;
+        line-height: 1.48;
+    }
+
+    .about-facts {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.34rem;
+    }
+
+    .about-facts div {
+        min-height: 4.1rem;
+        padding: 0.48rem;
+    }
+
+    .about-facts dt {
+        font-size: 0.58rem;
+    }
+
+    .about-facts dd {
+        font-size: 0.8rem;
     }
 
     .header-actions,

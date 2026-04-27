@@ -3,96 +3,111 @@
 
 <PageTitle>О проекте</PageTitle>
 
-<div class="about-shell">
-    <section class="about-hero">
-        <div class="about-hero-main">
-            <span class="eyebrow">Open source инструмент</span>
-            <h1>Разбор инцидентов без ручной сверки логов</h1>
+<div class="about-page">
+    <section class="about-compact-hero">
+        <div class="about-title-block">
+            <span class="eyebrow">О проекте</span>
+            <h1>@ApplicationInfo.Name</h1>
             <p>
-                @ApplicationInfo.Name помогает собрать события из разных источников в одну временную картину:
-                загрузить логи, выбрать проблемное событие и увидеть, что происходило рядом во всех связанных файлах.
+                Инженерный инструмент для разбора инцидентов по логам. Он помогает выбрать конкретную проблему,
+                собрать соседние события из разных источников и быстрее увидеть причинно-временной контекст.
             </p>
-            <div class="about-actions">
-                <a class="btn btn-primary" href="@ApplicationInfo.RepositoryUrl" target="_blank" rel="noopener noreferrer">
-                    Открыть GitHub
-                </a>
-                <a class="btn btn-outline-primary" href="">Перейти к дашборду</a>
-            </div>
         </div>
 
-        <aside class="about-meta-panel" aria-label="Сведения о проекте">
+        <dl class="about-facts">
             <div>
-                <span>Версия</span>
-                <strong>@ApplicationInfo.Version</strong>
+                <dt>Версия</dt>
+                <dd>@ApplicationInfo.Version</dd>
             </div>
             <div>
-                <span>Лицензия</span>
-                <strong>@ApplicationInfo.LicenseName</strong>
+                <dt>Лицензия</dt>
+                <dd>@ApplicationInfo.LicenseName</dd>
             </div>
             <div>
-                <span>Статус</span>
-                <strong>Open source</strong>
+                <dt>Код</dt>
+                <dd>Open source</dd>
             </div>
-        </aside>
+        </dl>
     </section>
 
-    <section class="about-flow" aria-label="Основной сценарий">
-        <article>
-            <span>01</span>
-            <h2>Загрузить</h2>
-            <p>Архивы и отдельные логи попадают в проект инцидента и индексируются для поиска.</p>
-        </article>
-        <article>
-            <span>02</span>
-            <h2>Выбрать событие</h2>
-            <p>Берется конкретная ошибка или предупреждение, вокруг которого нужно восстановить контекст.</p>
-        </article>
-        <article>
-            <span>03</span>
-            <h2>Собрать картину</h2>
-            <p>Сервис показывает события из других логов в выбранном окне времени с учетом смещений.</p>
-        </article>
-    </section>
-
-    <section class="about-content-grid">
-        <article class="about-story">
-            <span class="eyebrow">Зачем нужен</span>
-            <h2>Когда проблема размазана по нескольким сервисам</h2>
-            <p>
-                При реальном инциденте полезный сигнал часто лежит не в одном файле: приложение пишет stack trace,
-                IIS фиксирует запросы, фоновые задачи оставляют свои ошибки, а время в источниках может отличаться.
-                Log Analyzer убирает ручную механику и оставляет главное: выбрать проблему и быстро увидеть соседние события.
-            </p>
-        </article>
-
-        <div class="about-capabilities">
-            <article>
-                <h3>Индексация логов</h3>
-                <p>Поддерживает логи приложения, IIS W3C, архивы и большие файлы.</p>
-            </article>
-            <article>
-                <h3>Корреляция по времени</h3>
-                <p>Помогает связать ошибки, запросы и предупреждения в одном временном окне.</p>
-            </article>
-            <article>
-                <h3>Отчет по инциденту</h3>
-                <p>Найденный контекст можно выгрузить в Markdown для передачи команде.</p>
-            </article>
-        </div>
-    </section>
-
-    <section class="about-open-source">
+    <section class="about-problem-strip">
         <div>
-            <span class="eyebrow">Лицензия и код</span>
-            <h2>Проект открыт для развития</h2>
+            <span>Проблема</span>
+            <strong>Ошибки редко живут в одном файле</strong>
+        </div>
+        <p>
+            Во время расследования приходится сверять приложение, IIS, фоновые задачи и разные часовые пояса.
+            Log Analyzer превращает эту ручную сверку в один понятный сценарий.
+        </p>
+    </section>
+
+    <section class="about-workflow-panel">
+        <div class="section-title">
+            <div>
+                <span class="eyebrow">Сценарий</span>
+                <h2>Как проходит разбор</h2>
+            </div>
+        </div>
+
+        <div class="about-workflow">
+            <article>
+                <span>01</span>
+                <h3>Загрузить логи</h3>
+                <p>Файлы и архивы попадают в проект инцидента и индексируются для поиска.</p>
+            </article>
+            <article>
+                <span>02</span>
+                <h3>Выбрать проблему</h3>
+                <p>Берется конкретная ошибка или warning, вокруг которого нужно восстановить события.</p>
+            </article>
+            <article>
+                <span>03</span>
+                <h3>Задать окно</h3>
+                <p>Учитываются смещения времени, чтобы источники можно было сравнить корректно.</p>
+            </article>
+            <article>
+                <span>04</span>
+                <h3>Получить отчет</h3>
+                <p>Найденный контекст можно выгрузить в Markdown и передать команде.</p>
+            </article>
+        </div>
+    </section>
+
+    <section class="about-details-grid">
+        <article class="about-detail-main">
+            <span class="eyebrow">Назначение</span>
+            <h2>Быстро понять, что происходило вокруг ошибки</h2>
             <p>
-                Код опубликован на GitHub и распространяется под лицензией MIT. Его можно использовать,
-                изучать и адаптировать под внутренние сценарии расследования инцидентов.
+                Проект полезен, когда инцидент виден сразу в нескольких слоях системы: пользовательский запрос,
+                ошибка приложения, очередь, фоновые задачи, инфраструктурные предупреждения. Вместо ручного поиска
+                по файлам сервис показывает связанные события в одном временном окне.
             </p>
+        </article>
+
+        <div class="about-capability-list">
+            <article>
+                <h3>Индексация</h3>
+                <p>Логи приложения, IIS W3C, ZIP-архивы и большие файлы.</p>
+            </article>
+            <article>
+                <h3>Корреляция</h3>
+                <p>Сравнение событий из разных источников по времени и уровню важности.</p>
+            </article>
+            <article>
+                <h3>Отчетность</h3>
+                <p>Markdown-отчет по выбранной проблеме и найденному временному окну.</p>
+            </article>
+        </div>
+    </section>
+
+    <section class="about-source-line">
+        <div>
+            <span class="eyebrow">Open source</span>
+            <h2>Код открыт, лицензия MIT</h2>
+            <p>Проект можно использовать, изучать и адаптировать под внутренние сценарии анализа логов.</p>
         </div>
         <a class="repo-link" href="@ApplicationInfo.RepositoryUrl" target="_blank" rel="noopener noreferrer">
-            <span>Репозиторий</span>
-            <strong>github.com/deimosowen/log-analyzer</strong>
+            github.com/deimosowen/log-analyzer
         </a>
     </section>
 </div>

@@ -101,8 +101,8 @@ Open `http://localhost:5071`.
 Build and push the application image:
 
 ```powershell
-docker build -t deimosowen/log-analyzer:1.0.2 -t deimosowen/log-analyzer:latest .
-docker push deimosowen/log-analyzer:1.0.2
+docker build -t deimosowen/log-analyzer:1.0.3 -t deimosowen/log-analyzer:latest .
+docker push deimosowen/log-analyzer:1.0.3
 docker push deimosowen/log-analyzer:latest
 ```
 

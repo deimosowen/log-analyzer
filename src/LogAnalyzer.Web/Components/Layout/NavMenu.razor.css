@@ -64,6 +64,7 @@
     color: #475569;
     font-weight: 700;
     text-decoration: none;
+    white-space: nowrap;
 }
 
 .nav-link:hover,
@@ -97,7 +98,11 @@
         gap: 0.55rem;
     }
 
-    .brand small {
+    .brand {
+        gap: 0.5rem;
+    }
+
+    .brand strong {
         display: none;
     }
 
@@ -107,7 +112,7 @@
         font-size: 0.78rem;
     }
 
-    .nav-user span {
+    .nav-user {
         display: none;
     }
 }
