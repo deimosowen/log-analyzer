@@ -6,6 +6,8 @@ Repository: https://github.com/deimosowen/log-analyzer
 
 License: MIT
 
+Roadmap: [ROADMAP.md](ROADMAP.md)
+
 ## Purpose
 
 Log Analyzer helps investigate incidents when the useful context is spread across several logs. Create an incident project, upload logs, pick a problematic event, and inspect related events in the same time window with timezone offsets applied.
