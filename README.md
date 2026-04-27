@@ -101,8 +101,9 @@ Open `http://localhost:5071`.
 Build and push the application image:
 
 ```powershell
-docker build -t deimosowen/log-analyzer:1.0.1 .
-docker push deimosowen/log-analyzer:1.0.1
+docker build -t deimosowen/log-analyzer:1.0.2 -t deimosowen/log-analyzer:latest .
+docker push deimosowen/log-analyzer:1.0.2
+docker push deimosowen/log-analyzer:latest
 ```
 
 Deploy with ClickHouse:
@@ -122,6 +123,7 @@ https://<your-host>/signin-yandex
 Also set `PUBLIC_ORIGIN=https://<your-host>` in `.env`.
 
 `docker-compose.yml` keeps SQLite metadata and uploaded files in named volumes and stores indexed log events in ClickHouse. The image does not include local `appsettings*.json`; production settings are passed through environment variables.
+The compose file uses `deimosowen/log-analyzer:latest` so routine patch releases do not require editing the image tag.
 
 ## Verify
 
