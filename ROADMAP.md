@@ -10,6 +10,118 @@
 - Большие данные обрабатываются фоново, с понятным прогрессом и ограничениями.
 - Архитектура не должна завязывать доменную логику на Blazor-компоненты или конкретную БД.
 
+## Этап 0. Переезд Metadata DB С SQLite На PostgreSQL
+
+Цель: до активного роста функциональности заменить SQLite как основное хранилище metadata на PostgreSQL.
+
+### Почему Это Важно Сейчас
+
+SQLite удобен для MVP и локального запуска, но дальше проекту понадобятся командная работа, роли, шаринг, audit log, retention, админка и больше конкурентных операций. PostgreSQL лучше подходит для серверного multi-user сценария: транзакции, блокировки, индексы, миграции, эксплуатация и бэкапы будут предсказуемее.
+
+### Пользовательская ценность
+
+Пользователь получает более устойчивую серверную установку: данные проектов, пользователи, загрузки, комментарии и права доступа живут в полноценной БД, которую проще бэкапить, переносить и обслуживать.
+
+### Функции
+
+- Добавить PostgreSQL как основную metadata DB.
+- Оставить SQLite только как optional local/dev режим, если это не усложнит архитектуру.
+- Перенести таблицы metadata:
+  - users;
+  - projects;
+  - upload sessions;
+  - log files;
+  - import errors;
+  - schema migrations.
+- Добавить PostgreSQL migrator с миграциями по одному файлу на версию.
+- Добавить PostgreSQL metadata repository.
+- Обновить Docker Compose:
+  - сервис `postgres`;
+  - bind mount для `/var/lib/postgresql/data`;
+  - env-настройки подключения.
+- Обновить README и `.env.example`.
+- Подготовить стратегию миграции существующих данных из SQLite в PostgreSQL.
+
+### Критерии готовности
+
+- Новая установка поднимается с PostgreSQL без SQLite.
+- Все текущие сценарии работают:
+  - авторизация;
+  - создание проекта;
+  - загрузка логов;
+  - индексация;
+  - анализ инцидента;
+  - отчет.
+- Миграции PostgreSQL применяются автоматически при старте.
+- Docker Compose хранит данные PostgreSQL в папке рядом с compose или в явно заданном volume.
+- Тесты покрывают PostgreSQL migration catalog и базовые repository-сценарии.
+- README содержит инструкции запуска, backup и restore PostgreSQL.
+
+### Технические Задачи
+
+1. Ввести настройки `Postgres`:
+   - `ConnectionString`;
+   - `Host`;
+   - `Port`;
+   - `Database`;
+   - `Username`;
+   - `Password`;
+   - `Enabled` или `Provider`.
+2. Решить модель выбора metadata provider:
+   - вариант A: `Metadata:Provider = PostgreSQL | SQLite`;
+   - вариант B: PostgreSQL всегда в production, SQLite только dev fallback.
+3. Добавить `PostgresConnectionFactory`.
+4. Добавить `PostgresMetadataMigrator`.
+5. Добавить `PostgresMetadataMigration` marker base class.
+6. Переписать SQL metadata migrations под PostgreSQL.
+7. Реализовать `PostgresMetadataRepository`.
+8. Убрать SQLite-специфичные SQL-конструкции из application-слоя, если такие появятся.
+9. Добавить интеграционные тесты repository.
+10. Обновить Docker Compose и `.env.example`.
+11. Добавить команды backup/restore.
+
+### Миграция Данных
+
+Если к моменту переезда уже есть production-данные в SQLite, нужен отдельный migration tool или команда:
+
+- читает текущую SQLite metadata DB;
+- переносит пользователей, проекты, upload sessions, log files и import errors;
+- сохраняет идентификаторы;
+- проверяет количество записей до и после;
+- не переносит indexed events из ClickHouse, потому что они уже живут отдельно.
+
+Для первого production-переезда можно сделать ручной one-shot console command, но его нужно держать в репозитории и документировать.
+
+### Backup И Restore
+
+Минимальные команды для документации:
+
+- `pg_dump` для backup metadata;
+- `psql` для restore;
+- отдельный backup ClickHouse;
+- отдельный backup storage folder.
+
+### Риски
+
+- Усложнение локального запуска.
+- Нужно внимательно сохранить compatibility с текущими migration abstractions.
+- Нужно не смешать metadata storage и event storage: PostgreSQL заменяет SQLite metadata, но ClickHouse остается основным event store для больших логов.
+- При неверных volume/bind настройках можно потерять данные, поэтому compose должен быть максимально явным.
+
+### Рекомендуемое Решение
+
+Сделать PostgreSQL основным metadata provider для Docker/production, а SQLite оставить только для локальной разработки на первое время.
+
+В конфигурации использовать явный provider:
+
+```json
+"Metadata": {
+  "Provider": "PostgreSQL"
+}
+```
+
+Сервис-регистрация должна выбирать реализацию `IMetadataRepository` и metadata migrator по provider, а application/UI не должны знать, какая БД используется.
+
 ## Этап 1. Timeline И Карта Инцидента
 
 Цель: дать визуальное понимание того, как развивался инцидент во времени.
@@ -325,6 +437,7 @@
 
 ## Предлагаемый Порядок Реализации
 
+0. Переезд metadata DB с SQLite на PostgreSQL.
 1. Timeline и карта инцидента.
 2. IIS-focused анализ.
 3. Закладки, комментарии и вердикт.
@@ -337,7 +450,40 @@
 
 ## Ближайший Milestone
 
-### Milestone 1.1.0: Timeline И IIS Summary
+### Milestone 1.1.0: PostgreSQL Metadata Storage
+
+Цель: перевести production metadata storage на PostgreSQL до добавления новых сущностей и командной работы.
+
+Входит:
+
+- PostgreSQL service в Docker Compose;
+- `PostgresMetadataRepository`;
+- PostgreSQL metadata migrations;
+- выбор metadata provider через конфигурацию;
+- обновление README и `.env.example`;
+- backup/restore инструкции;
+- smoke-test текущего пользовательского сценария на PostgreSQL.
+
+Не входит:
+
+- Timeline;
+- IIS summary;
+- комментарии;
+- роли и шаринг;
+- AI;
+- внешние интеграции.
+
+### Definition Of Done
+
+- Новая production-установка работает без SQLite metadata DB.
+- Все текущие пользовательские сценарии проходят на PostgreSQL.
+- SQLite либо остается dev fallback, либо явно удаляется из production-конфига.
+- Данные PostgreSQL хранятся в ожидаемой папке/volume и не теряются после `docker-compose down`.
+- Docker image и compose обновлены.
+
+## Следующий Milestone
+
+### Milestone 1.2.0: Timeline И IIS Summary
 
 Цель: сделать анализ инцидента визуально понятнее и снизить шум от IIS.
 
