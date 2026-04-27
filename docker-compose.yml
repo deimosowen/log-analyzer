@@ -1,0 +1,63 @@
+services:
+  log-analyzer:
+    image: deimosowen/log-analyzer:1.0.0
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "${LOG_ANALYZER_PORT:-5071}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:8080"
+      Storage__RootPath: "/app/storage"
+      Sqlite__DatabasePath: "/app/data/log-analyzer.db"
+      ClickHouse__Enabled: "true"
+      ClickHouse__Endpoint: "http://clickhouse:8123/"
+      ClickHouse__Database: "${CLICKHOUSE_DB:-log_analyzer}"
+      ClickHouse__Username: "${CLICKHOUSE_USER:-default}"
+      ClickHouse__Password: "${CLICKHOUSE_PASSWORD:-}"
+      Authentication__Enabled: "${AUTHENTICATION_ENABLED:-true}"
+      Authentication__Yandex__ClientId: "${YANDEX_CLIENT_ID}"
+      Authentication__Yandex__ClientSecret: "${YANDEX_CLIENT_SECRET}"
+      Authentication__Yandex__CallbackPath: "/signin-yandex"
+      # Add allowed domains only when needed:
+      # Authentication__AllowedEmailDomains__0: "example.com"
+    volumes:
+      - log-analyzer-data:/app/data
+      - log-analyzer-storage:/app/storage
+
+  clickhouse:
+    image: clickhouse:lts
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: "${CLICKHOUSE_DB:-log_analyzer}"
+      CLICKHOUSE_USER: "${CLICKHOUSE_USER:-default}"
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-}"
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "clickhouse-client --host localhost --user \"$${CLICKHOUSE_USER}\" --password \"$${CLICKHOUSE_PASSWORD}\" --query \"SELECT 1\""
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+volumes:
+  log-analyzer-data:
+  log-analyzer-storage:
+  clickhouse-data:
+  clickhouse-logs:

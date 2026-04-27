@@ -3,6 +3,9 @@ obj/
 .vs/
 .vscode/
 .idea/
+.env
+.env.*
+!.env.example
 
 /artifacts/
 /storage/

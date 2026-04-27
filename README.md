@@ -84,6 +84,31 @@ dotnet run --project .\src\LogAnalyzer.Web\LogAnalyzer.Web.csproj --urls http://
 
 Open `http://localhost:5071`.
 
+## Docker
+
+Build and push the application image:
+
+```powershell
+docker build -t deimosowen/log-analyzer:1.0.0 .
+docker push deimosowen/log-analyzer:1.0.0
+```
+
+Deploy with ClickHouse:
+
+```powershell
+Copy-Item .env.example .env
+# Fill YANDEX_CLIENT_ID and YANDEX_CLIENT_SECRET in .env.
+docker compose up -d
+```
+
+For Yandex OAuth on a server, add this redirect URI in the Yandex app:
+
+```text
+http(s)://<your-host>/signin-yandex
+```
+
+`docker-compose.yml` keeps SQLite metadata and uploaded files in named volumes and stores indexed log events in ClickHouse. The image does not include local `appsettings*.json`; production settings are passed through environment variables.
+
 ## Verify
 
 ```powershell
