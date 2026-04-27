@@ -1,4 +1,6 @@
 using LogAnalyzer.Application;
+using LogAnalyzer.Web.Auth;
+using Microsoft.Extensions.Options;
 
 namespace LogAnalyzer.Web.Api;
 
@@ -19,12 +21,25 @@ internal static class EventApiEndpoints
         string logFileId,
         int? offset,
         int? limit,
+        HttpContext context,
         IMetadataRepository metadata,
         ILogEventStore events,
+        IOptions<AppAuthenticationOptions> authOptions,
         CancellationToken cancellationToken)
     {
+        var user = HttpCurrentUser.Get(context, authOptions);
+        if (!user.IsAuthenticated)
+        {
+            return Results.Unauthorized();
+        }
+
         var logFile = await metadata.GetLogFileAsync(logFileId, cancellationToken);
         if (logFile is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (await metadata.GetProjectAsync(user.Id, logFile.ProjectId, cancellationToken) is null)
         {
             return Results.NotFound();
         }
@@ -40,20 +55,36 @@ internal static class EventApiEndpoints
 
     private static async Task<IResult> GetEventAsync(
         string eventId,
+        HttpContext context,
+        IMetadataRepository metadata,
         ILogEventStore events,
+        IOptions<AppAuthenticationOptions> authOptions,
         CancellationToken cancellationToken)
     {
-        return await events.GetEventAsync(eventId, cancellationToken) is { } logEvent
-            ? Results.Ok(logEvent)
-            : Results.NotFound();
+        var logEvent = await events.GetEventAsync(eventId, cancellationToken);
+        if (logEvent is null ||
+            !await CanAccessProjectAsync(logEvent.ProjectId, context, metadata, authOptions, cancellationToken))
+        {
+            return Results.NotFound();
+        }
+
+        return Results.Ok(logEvent);
     }
 
     private static async Task<IResult> SearchAroundAsync(
         string projectId,
         HttpRequest request,
+        HttpContext context,
+        IMetadataRepository metadata,
         ILogEventStore events,
+        IOptions<AppAuthenticationOptions> authOptions,
         CancellationToken cancellationToken)
     {
+        if (!await CanAccessProjectAsync(projectId, context, metadata, authOptions, cancellationToken))
+        {
+            return Results.NotFound();
+        }
+
         var timestamp = ApiQueryReader.ReadDate(request, "timestamp") ?? DateTimeOffset.UtcNow;
         return Results.Ok(await events.SearchAsync(new LogEventSearchRequest
         {
@@ -70,9 +101,17 @@ internal static class EventApiEndpoints
     private static async Task<IResult> SearchProjectEventsAsync(
         string projectId,
         HttpRequest request,
+        HttpContext context,
+        IMetadataRepository metadata,
         ILogEventStore events,
+        IOptions<AppAuthenticationOptions> authOptions,
         CancellationToken cancellationToken)
     {
+        if (!await CanAccessProjectAsync(projectId, context, metadata, authOptions, cancellationToken))
+        {
+            return Results.NotFound();
+        }
+
         return Results.Ok(await events.SearchAsync(new LogEventSearchRequest
         {
             ProjectId = projectId,
@@ -89,9 +128,17 @@ internal static class EventApiEndpoints
     private static async Task<IResult> GetTimelineAsync(
         string projectId,
         HttpRequest request,
+        HttpContext context,
+        IMetadataRepository metadata,
         ILogEventStore events,
+        IOptions<AppAuthenticationOptions> authOptions,
         CancellationToken cancellationToken)
     {
+        if (!await CanAccessProjectAsync(projectId, context, metadata, authOptions, cancellationToken))
+        {
+            return Results.NotFound();
+        }
+
         var to = ApiQueryReader.ReadDate(request, "to")?.ToUniversalTime() ?? DateTimeOffset.UtcNow;
         var from = ApiQueryReader.ReadDate(request, "from")?.ToUniversalTime() ??
                    to.Subtract(EventSearchDefaults.DefaultTimelineLookback);
@@ -105,5 +152,17 @@ internal static class EventApiEndpoints
             LogFileIds = ApiQueryReader.ReadMany(request, "logFileIds"),
             Levels = ApiQueryReader.ReadMany(request, "levels")
         }, cancellationToken));
+    }
+
+    private static async Task<bool> CanAccessProjectAsync(
+        string projectId,
+        HttpContext context,
+        IMetadataRepository metadata,
+        IOptions<AppAuthenticationOptions> authOptions,
+        CancellationToken cancellationToken)
+    {
+        var user = HttpCurrentUser.Get(context, authOptions);
+        return user.IsAuthenticated &&
+               await metadata.GetProjectAsync(user.Id, projectId, cancellationToken) is not null;
     }
 }

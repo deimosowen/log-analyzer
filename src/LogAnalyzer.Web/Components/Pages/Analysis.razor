@@ -2,9 +2,10 @@
 @rendermode InteractiveServer
 @inject IMetadataRepository Metadata
 @inject ILogEventStore EventStore
+@inject ICurrentUserService CurrentUserService
 @inject NavigationManager Navigation
 
-<PageTitle>Analysis</PageTitle>
+<PageTitle>Анализ инцидента</PageTitle>
 
 @if (project is null)
 {
@@ -173,7 +174,7 @@ else
                         <span class="level-pill @selectedEvent.Level">@DisplayLevel(selectedEvent.Level)</span>
                         <div>
                             <strong>@selectedEvent.Message</strong>
-                            <small>@FormatTime(selectedEvent.TimestampUtc) · @LogName(selectedEvent.LogFileId) · line @selectedEvent.LineNumber</small>
+                            <small>@FormatTime(selectedEvent.TimestampUtc) · @LogName(selectedEvent.LogFileId) · строка @selectedEvent.LineNumber</small>
                         </div>
                     </div>
 
@@ -246,9 +247,9 @@ else
                             <dt>Время</dt><dd>@FormatTime(selectedEvent.TimestampUtc)</dd>
                             @if (!string.IsNullOrWhiteSpace(selectedEvent.HttpMethod) || selectedEvent.StatusCode > 0)
                             {
-                                <dt>HTTP</dt><dd>@selectedEvent.HttpMethod @selectedEvent.Url @selectedEvent.StatusCode · @selectedEvent.TimeTaken ms</dd>
-                                <dt>Client</dt><dd>@selectedEvent.ClientIp</dd>
-                                <dt>Server</dt><dd>@selectedEvent.ServerIp</dd>
+                                <dt>HTTP</dt><dd>@selectedEvent.HttpMethod @selectedEvent.Url @selectedEvent.StatusCode · @selectedEvent.TimeTaken мс</dd>
+                                <dt>Клиент</dt><dd>@selectedEvent.ClientIp</dd>
+                                <dt>Сервер</dt><dd>@selectedEvent.ServerIp</dd>
                             }
                         </dl>
                         <pre>@selectedEvent.RawText</pre>

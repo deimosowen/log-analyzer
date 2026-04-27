@@ -1,119 +1,103 @@
 @page "/"
 @rendermode InteractiveServer
-@inject IMetadataRepository Metadata
-@inject NavigationManager Navigation
 
-<PageTitle>Projects</PageTitle>
+<PageTitle>Проекты</PageTitle>
 
-<div class="view-header">
-    <div>
-        <h1>Projects</h1>
-        <p>Upload logs, index them, and inspect time-correlated events.</p>
-    </div>
-</div>
+<div class="dashboard-shell">
+    <header class="dashboard-header">
+        <div>
+            <span class="eyebrow">Рабочая область</span>
+            <h1>Проекты с логами</h1>
+            <p>Загружайте логи, выбирайте проблемное событие и смотрите, что происходило рядом по времени.</p>
+        </div>
+        <div class="user-badge">
+            <span>@currentUser.DisplayName</span>
+            <small>@currentUser.Email</small>
+        </div>
+    </header>
 
-<section class="panel compact-form">
-    <div class="form-grid">
-        <label>
-            Name
-            <input class="form-control" @bind="newName" placeholder="Production incident 2026-04-21" />
-        </label>
-        <label>
-            Description
-            <input class="form-control" @bind="newDescription" placeholder="Short context" />
-        </label>
-        <button class="btn btn-primary" @onclick="CreateProject" disabled="@isBusy">Create</button>
-    </div>
-    @if (!string.IsNullOrWhiteSpace(error))
-    {
-        <div class="alert alert-danger mt-3">@error</div>
-    }
-</section>
+    <section class="metric-grid">
+        <div class="metric-tile">
+            <span>Проекты</span>
+            <strong>@projects.Count</strong>
+        </div>
+        <div class="metric-tile">
+            <span>Логи</span>
+            <strong>@logCount</strong>
+        </div>
+        <div class="metric-tile">
+            <span>События</span>
+            <strong>@eventCount</strong>
+        </div>
+        <div class="metric-tile accent">
+            <span>Проблемы</span>
+            <strong>@problemCount</strong>
+        </div>
+    </section>
 
-<section class="table-wrap mt-4">
-    <table class="table app-table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Description</th>
-                <th>Created</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @if (projects.Count == 0)
-            {
-                <tr>
-                    <td colspan="4" class="muted-cell">No projects yet.</td>
-                </tr>
-            }
-            else
-            {
+    <section class="create-project-panel">
+        <div>
+            <span class="eyebrow">Новый разбор</span>
+            <h2>Создать проект</h2>
+        </div>
+        <div class="create-project-form">
+            <label>
+                Название
+                <input class="form-control" @bind="newName" placeholder="Инцидент API 2026-04-21" />
+            </label>
+            <label>
+                Контекст
+                <input class="form-control" @bind="newDescription" placeholder="Сервис, релиз, короткое описание" />
+            </label>
+            <button class="btn btn-primary" @onclick="CreateProject" disabled="@isBusy">Создать</button>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(error))
+        {
+            <div class="alert alert-danger mt-3">@error</div>
+        }
+    </section>
+
+    <section class="project-board">
+        <div class="section-title">
+            <div>
+                <span class="eyebrow">Ваши проекты</span>
+                <h2>Последние разборы</h2>
+            </div>
+        </div>
+
+        @if (projects.Count == 0)
+        {
+            <div class="empty-state">
+                <h2>Пока нет проектов</h2>
+                <p>Создайте первый проект, загрузите логи и откройте анализ инцидента.</p>
+            </div>
+        }
+        else
+        {
+            <div class="project-grid">
                 @foreach (var project in projects)
                 {
-                    <tr>
-                        <td class="strong">@project.Name</td>
-                        <td>@project.Description</td>
-                        <td>@project.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
-                        <td class="row-actions">
-                            <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenProject(project.Id)">Open</button>
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteProject(project.Id)">Delete</button>
-                        </td>
-                    </tr>
+                    var summary = summaries.GetValueOrDefault(project.Id);
+                    <article class="project-card">
+                        <div>
+                            <h3>@project.Name</h3>
+                            <p>@project.Description</p>
+                        </div>
+                        <div class="project-card-stats">
+                            <span>@(summary?.LogCount ?? 0) логов</span>
+                            <span>@(summary?.EventCount ?? 0) событий</span>
+                            <span>@(summary?.ProblemCount ?? 0) проблем</span>
+                        </div>
+                        <div class="project-card-footer">
+                            <small>@project.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</small>
+                            <div class="row-actions">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenProject(project.Id)">Открыть</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteProject(project.Id)">Удалить</button>
+                            </div>
+                        </div>
+                    </article>
                 }
-            }
-        </tbody>
-    </table>
-</section>
-
-@code {
-    private List<ProjectEntity> projects = [];
-    private string newName = string.Empty;
-    private string? newDescription;
-    private string? error;
-    private bool isBusy;
-
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadProjects();
-    }
-
-    private async Task LoadProjects()
-    {
-        projects = (await Metadata.ListProjectsAsync(CancellationToken.None)).ToList();
-    }
-
-    private async Task CreateProject()
-    {
-        error = null;
-        if (string.IsNullOrWhiteSpace(newName))
-        {
-            error = "Project name is required.";
-            return;
+            </div>
         }
-
-        isBusy = true;
-        try
-        {
-            var project = await Metadata.CreateProjectAsync(newName, newDescription, CancellationToken.None);
-            newName = string.Empty;
-            newDescription = null;
-            Navigation.NavigateTo($"/projects/{project.Id}");
-        }
-        finally
-        {
-            isBusy = false;
-        }
-    }
-
-    private void OpenProject(string projectId)
-    {
-        Navigation.NavigateTo($"/projects/{projectId}");
-    }
-
-    private async Task DeleteProject(string projectId)
-    {
-        await Metadata.DeleteProjectAsync(projectId, CancellationToken.None);
-        await LoadProjects();
-    }
-}
+    </section>
+</div>

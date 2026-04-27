@@ -1,3 +1,5 @@
+@inject IOptions<AppAuthenticationOptions> AuthOptions
+
 <nav class="top-nav">
     <a class="brand" href="">
         <span class="brand-mark">LA</span>
@@ -9,5 +11,24 @@
 
     <div class="nav-links">
         <NavLink class="nav-link" href="" Match="NavLinkMatch.All">Проекты</NavLink>
+    </div>
+
+    <div class="nav-user">
+        @if (AuthOptions.Value.Enabled)
+        {
+            <AuthorizeView>
+                <Authorized>
+                    <span>@context.User.Identity?.Name</span>
+                    <a href="/logout">Выйти</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="/login">Войти через Яндекс</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        }
+        else
+        {
+            <span>Локальный режим</span>
+        }
     </div>
 </nav>

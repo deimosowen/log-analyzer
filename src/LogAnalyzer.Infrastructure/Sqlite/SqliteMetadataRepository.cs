@@ -14,18 +14,60 @@ public sealed class SqliteMetadataRepository : IMetadataRepository
         _connectionFactory = connectionFactory;
     }
 
-    public async Task<ProjectEntity> CreateProjectAsync(string name, string? description, CancellationToken cancellationToken)
+    public async Task<UserEntity> UpsertUserAsync(UserProfile profile, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var project = new ProjectEntity(Guid.NewGuid().ToString("N"), name.Trim(), description, now, now);
+        var userId = $"{profile.Provider}:{profile.ProviderUserId}";
 
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO projects (id, name, description, created_at, updated_at)
-            VALUES ($id, $name, $description, $created_at, $updated_at);
+            INSERT INTO app_users
+                (id, provider, provider_user_id, email, display_name, created_at, last_login_at)
+            VALUES
+                ($id, $provider, $provider_user_id, $email, $display_name, $created_at, $last_login_at)
+            ON CONFLICT(provider, provider_user_id)
+            DO UPDATE SET
+                email = excluded.email,
+                display_name = excluded.display_name,
+                last_login_at = excluded.last_login_at;
+            """;
+        Add(command, "$id", userId);
+        Add(command, "$provider", profile.Provider);
+        Add(command, "$provider_user_id", profile.ProviderUserId);
+        Add(command, "$email", profile.Email);
+        Add(command, "$display_name", profile.DisplayName);
+        Add(command, "$created_at", ToDb(now));
+        Add(command, "$last_login_at", ToDb(now));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return new UserEntity(
+            userId,
+            profile.Provider,
+            profile.ProviderUserId,
+            profile.Email,
+            profile.DisplayName,
+            now,
+            now);
+    }
+
+    public async Task<ProjectEntity> CreateProjectAsync(
+        string ownerUserId,
+        string name,
+        string? description,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var project = new ProjectEntity(Guid.NewGuid().ToString("N"), ownerUserId, name.Trim(), description, now, now);
+
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO projects (id, owner_user_id, name, description, created_at, updated_at)
+            VALUES ($id, $owner_user_id, $name, $description, $created_at, $updated_at);
             """;
         Add(command, "$id", project.Id);
+        Add(command, "$owner_user_id", project.OwnerUserId);
         Add(command, "$name", project.Name);
         Add(command, "$description", project.Description);
         Add(command, "$created_at", ToDb(project.CreatedAt));
@@ -34,11 +76,12 @@ public sealed class SqliteMetadataRepository : IMetadataRepository
         return project;
     }
 
-    public async Task<IReadOnlyList<ProjectEntity>> ListProjectsAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ProjectEntity>> ListProjectsAsync(string ownerUserId, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT * FROM projects ORDER BY updated_at DESC;";
+        command.CommandText = "SELECT * FROM projects WHERE owner_user_id = $owner_user_id ORDER BY updated_at DESC;";
+        Add(command, "$owner_user_id", ownerUserId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var result = new List<ProjectEntity>();
         while (await reader.ReadAsync(cancellationToken))
@@ -49,19 +92,29 @@ public sealed class SqliteMetadataRepository : IMetadataRepository
         return result;
     }
 
-    public async Task<ProjectEntity?> GetProjectAsync(string projectId, CancellationToken cancellationToken)
+    public async Task<ProjectEntity?> GetProjectAsync(string ownerUserId, string projectId, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT * FROM projects WHERE id = $id;";
+        command.CommandText = "SELECT * FROM projects WHERE id = $id AND owner_user_id = $owner_user_id;";
         Add(command, "$id", projectId);
+        Add(command, "$owner_user_id", ownerUserId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadProject(reader) : null;
     }
 
-    public async Task DeleteProjectAsync(string projectId, CancellationToken cancellationToken)
+    public async Task DeleteProjectAsync(string ownerUserId, string projectId, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
+        await using var projectCommand = connection.CreateCommand();
+        projectCommand.CommandText = "SELECT 1 FROM projects WHERE id = $id AND owner_user_id = $owner_user_id;";
+        Add(projectCommand, "$id", projectId);
+        Add(projectCommand, "$owner_user_id", ownerUserId);
+        if (await projectCommand.ExecuteScalarAsync(cancellationToken) is null)
+        {
+            return;
+        }
+
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         foreach (var table in new[] { "import_errors", "log_files", "upload_sessions", "projects" })
         {
@@ -337,6 +390,7 @@ public sealed class SqliteMetadataRepository : IMetadataRepository
     {
         return new ProjectEntity(
             reader.GetString(reader.GetOrdinal("id")),
+            reader.GetString(reader.GetOrdinal("owner_user_id")),
             reader.GetString(reader.GetOrdinal("name")),
             GetNullableString(reader, "description"),
             FromDb(reader.GetString(reader.GetOrdinal("created_at"))),

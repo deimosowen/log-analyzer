@@ -2,6 +2,7 @@ using LogAnalyzer.Application;
 using LogAnalyzer.Application.Analysis;
 using LogAnalyzer.Application.Time;
 using LogAnalyzer.Domain;
+using LogAnalyzer.Web.Auth;
 using LogAnalyzer.Web.Formatting;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -22,6 +23,7 @@ public partial class Analysis
     [Parameter] public string ProjectId { get; set; } = string.Empty;
 
     private ProjectEntity? project;
+    private CurrentUser currentUser = new("local-dev", "local@dev.local", "Локальный пользователь", true);
     private List<LogFileEntity> logs = [];
     private IReadOnlyDictionary<string, LogFileEventStats> stats = new Dictionary<string, LogFileEventStats>();
     private Dictionary<string, string> logNames = new(StringComparer.OrdinalIgnoreCase);
@@ -88,7 +90,13 @@ public partial class Analysis
 
     protected override async Task OnInitializedAsync()
     {
-        project = await Metadata.GetProjectAsync(ProjectId, CancellationToken.None);
+        currentUser = await CurrentUserService.GetAsync(CancellationToken.None);
+        project = await Metadata.GetProjectAsync(currentUser.Id, ProjectId, CancellationToken.None);
+        if (project is null)
+        {
+            return;
+        }
+
         logs = (await Metadata.ListLogFilesAsync(ProjectId, CancellationToken.None)).ToList();
         logNames = logs.ToDictionary(log => log.Id, LogFileDisplayName.Format, StringComparer.OrdinalIgnoreCase);
         selectedLogIds = logs.Select(log => log.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);

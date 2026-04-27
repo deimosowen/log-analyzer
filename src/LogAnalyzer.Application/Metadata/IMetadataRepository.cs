@@ -4,10 +4,11 @@ namespace LogAnalyzer.Application;
 
 public interface IMetadataRepository
 {
-    Task<ProjectEntity> CreateProjectAsync(string name, string? description, CancellationToken cancellationToken);
-    Task<IReadOnlyList<ProjectEntity>> ListProjectsAsync(CancellationToken cancellationToken);
-    Task<ProjectEntity?> GetProjectAsync(string projectId, CancellationToken cancellationToken);
-    Task DeleteProjectAsync(string projectId, CancellationToken cancellationToken);
+    Task<UserEntity> UpsertUserAsync(UserProfile profile, CancellationToken cancellationToken);
+    Task<ProjectEntity> CreateProjectAsync(string ownerUserId, string name, string? description, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ProjectEntity>> ListProjectsAsync(string ownerUserId, CancellationToken cancellationToken);
+    Task<ProjectEntity?> GetProjectAsync(string ownerUserId, string projectId, CancellationToken cancellationToken);
+    Task DeleteProjectAsync(string ownerUserId, string projectId, CancellationToken cancellationToken);
     Task<UploadSessionEntity> CreateUploadSessionAsync(UploadSessionCreateRequest request, CancellationToken cancellationToken);
     Task<UploadSessionEntity?> GetUploadSessionAsync(string uploadSessionId, CancellationToken cancellationToken);
     Task<IReadOnlyList<UploadSessionEntity>> ListUploadSessionsAsync(string projectId, CancellationToken cancellationToken);

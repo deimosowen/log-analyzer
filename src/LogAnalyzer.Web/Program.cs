@@ -2,13 +2,17 @@ using LogAnalyzer.Application;
 using LogAnalyzer.Infrastructure;
 using LogAnalyzer.Infrastructure.Migrations;
 using LogAnalyzer.Web.Api;
+using LogAnalyzer.Web.Auth;
 using LogAnalyzer.Web.Components;
 using LogAnalyzer.Web.Services;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddLogAnalyzerAuthentication(builder.Configuration);
 builder.Services.AddLogAnalyzerInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<ImportCancellationRegistry>();
 builder.Services.AddHostedService<ImportWorkerService>();
@@ -24,11 +28,18 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseStaticFiles();
+app.UseLogAnalyzerAuthentication();
 app.UseAntiforgery();
+app.MapLogAnalyzerAuth();
 app.MapLogAnalyzerApi();
 
-app.MapRazorComponents<App>()
+var components = app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+if (app.Services.GetRequiredService<IOptions<AppAuthenticationOptions>>().Value.Enabled)
+{
+    components.RequireAuthorization();
+}
 
 await InitializeStorageAsync(app.Services);
 

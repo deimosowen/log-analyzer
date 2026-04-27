@@ -41,7 +41,33 @@ Database schema is updated through `IDatabaseMigrator` implementations at applic
 - SQLite event schema: `SqliteEventStoreMigrator`.
 - ClickHouse event schema: `ClickHouseEventStoreMigrator`.
 
-Each migrator writes applied versions into `schema_migrations`. To extend a schema, add the next `DatabaseMigration` entry to the relevant migrator instead of editing repository initialization code.
+Each migrator writes applied versions into `schema_migrations`. Migration SQL lives in one file per version and is grouped by database and schema:
+
+- SQLite metadata: `src/LogAnalyzer.Infrastructure/Sqlite/Migrations/Metadata/V###_*.cs`.
+- SQLite events: `src/LogAnalyzer.Infrastructure/Sqlite/Migrations/Events/V###_*.cs`.
+- ClickHouse events: `src/LogAnalyzer.Infrastructure/ClickHouse/Migrations/Events/V###_*.cs`.
+
+To extend a schema, add the next `V###_*.cs` migration file in the relevant folder and register it in the matching migrator's ordered `Migrations` list.
+
+## Authentication
+
+Authentication is configured in `Authentication` settings. Local development uses the configured development user while `Authentication:Enabled=false`.
+
+For Yandex OAuth, set:
+
+```json
+"Authentication": {
+  "Enabled": true,
+  "AllowedEmailDomains": [ "example.com" ],
+  "Yandex": {
+    "ClientId": "<client-id>",
+    "ClientSecret": "<client-secret>",
+    "CallbackPath": "/signin-yandex"
+  }
+}
+```
+
+When `AllowedEmailDomains` is empty, any verified Yandex email domain is accepted. When it contains domains, only matching email domains can sign in.
 
 ## Run
 

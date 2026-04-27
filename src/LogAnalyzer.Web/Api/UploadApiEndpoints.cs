@@ -1,7 +1,9 @@
 using LogAnalyzer.Application;
 using LogAnalyzer.Application.Time;
 using LogAnalyzer.Domain;
+using LogAnalyzer.Web.Auth;
 using LogAnalyzer.Web.Services;
+using Microsoft.Extensions.Options;
 
 namespace LogAnalyzer.Web.Api;
 
@@ -21,9 +23,22 @@ internal static class UploadApiEndpoints
     private static async Task<IResult> CreateUploadAsync(
         string projectId,
         CreateUploadRequest request,
+        HttpContext context,
         IMetadataRepository metadata,
+        IOptions<AppAuthenticationOptions> authOptions,
         CancellationToken cancellationToken)
     {
+        var user = HttpCurrentUser.Get(context, authOptions);
+        if (!user.IsAuthenticated)
+        {
+            return Results.Unauthorized();
+        }
+
+        if (await metadata.GetProjectAsync(user.Id, projectId, cancellationToken) is null)
+        {
+            return Results.NotFound();
+        }
+
         var upload = await metadata.CreateUploadSessionAsync(
             new UploadSessionCreateRequest(projectId, request.OriginalName),
             cancellationToken);
@@ -34,12 +49,25 @@ internal static class UploadApiEndpoints
     private static async Task<IResult> UploadFilesAsync(
         string uploadId,
         HttpRequest request,
+        HttpContext context,
         IMetadataRepository metadata,
         ILogFileStorage storage,
+        IOptions<AppAuthenticationOptions> authOptions,
         CancellationToken cancellationToken)
     {
+        var user = HttpCurrentUser.Get(context, authOptions);
+        if (!user.IsAuthenticated)
+        {
+            return Results.Unauthorized();
+        }
+
         var upload = await metadata.GetUploadSessionAsync(uploadId, cancellationToken);
         if (upload is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (await metadata.GetProjectAsync(user.Id, upload.ProjectId, cancellationToken) is null)
         {
             return Results.NotFound();
         }
@@ -67,12 +95,25 @@ internal static class UploadApiEndpoints
     private static async Task<IResult> StartImportAsync(
         string uploadId,
         StartImportRequest request,
+        HttpContext context,
         IMetadataRepository metadata,
         IImportJobQueue queue,
+        IOptions<AppAuthenticationOptions> authOptions,
         CancellationToken cancellationToken)
     {
+        var user = HttpCurrentUser.Get(context, authOptions);
+        if (!user.IsAuthenticated)
+        {
+            return Results.Unauthorized();
+        }
+
         var upload = await metadata.GetUploadSessionAsync(uploadId, cancellationToken);
         if (upload is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (await metadata.GetProjectAsync(user.Id, upload.ProjectId, cancellationToken) is null)
         {
             return Results.NotFound();
         }
@@ -88,20 +129,46 @@ internal static class UploadApiEndpoints
 
     private static async Task<IResult> GetUploadStatusAsync(
         string uploadId,
+        HttpContext context,
         IMetadataRepository metadata,
+        IOptions<AppAuthenticationOptions> authOptions,
         CancellationToken cancellationToken)
     {
-        return await metadata.GetUploadSessionAsync(uploadId, cancellationToken) is { } upload
-            ? Results.Ok(upload)
-            : Results.NotFound();
+        var user = HttpCurrentUser.Get(context, authOptions);
+        if (!user.IsAuthenticated)
+        {
+            return Results.Unauthorized();
+        }
+
+        var upload = await metadata.GetUploadSessionAsync(uploadId, cancellationToken);
+        if (upload is null || await metadata.GetProjectAsync(user.Id, upload.ProjectId, cancellationToken) is null)
+        {
+            return Results.NotFound();
+        }
+
+        return Results.Ok(upload);
     }
 
     private static async Task<IResult> CancelUploadAsync(
         string uploadId,
+        HttpContext context,
         ImportCancellationRegistry registry,
         IMetadataRepository metadata,
+        IOptions<AppAuthenticationOptions> authOptions,
         CancellationToken cancellationToken)
     {
+        var user = HttpCurrentUser.Get(context, authOptions);
+        if (!user.IsAuthenticated)
+        {
+            return Results.Unauthorized();
+        }
+
+        var upload = await metadata.GetUploadSessionAsync(uploadId, cancellationToken);
+        if (upload is null || await metadata.GetProjectAsync(user.Id, upload.ProjectId, cancellationToken) is null)
+        {
+            return Results.NotFound();
+        }
+
         registry.Cancel(uploadId);
         await metadata.UpdateUploadSessionAsync(
             uploadId,
