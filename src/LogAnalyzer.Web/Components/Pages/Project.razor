@@ -118,7 +118,6 @@ else
                 <thead>
                     <tr>
                         <th>Имя</th>
-                        <th>Путь</th>
                         <th>Формат</th>
                         <th>Размер</th>
                         <th>Строки</th>
@@ -132,7 +131,7 @@ else
                 <tbody>
                     @if (logs.Count == 0)
                     {
-                        <tr><td colspan="10" class="muted-cell">Проиндексированных логов пока нет.</td></tr>
+                        <tr><td colspan="9" class="muted-cell">Проиндексированных логов пока нет.</td></tr>
                     }
                     else
                     {
@@ -141,7 +140,6 @@ else
                             var stat = stats.GetValueOrDefault(log.Id);
                             <tr>
                                 <td class="strong" title="@log.DisplayName">@LogFileDisplayName.Format(log)</td>
-                                <td>@log.OriginalPath</td>
                                 <td>@log.Format</td>
                                 <td>@FormatBytes(log.SizeBytes)</td>
                                 <td>@log.LineCount</td>

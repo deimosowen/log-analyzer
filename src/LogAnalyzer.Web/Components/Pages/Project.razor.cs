@@ -18,7 +18,7 @@ public partial class Project : IAsyncDisposable
     private List<LogFileEntity> logs = [];
     private IReadOnlyDictionary<string, LogFileEventStats> stats = new Dictionary<string, LogFileEventStats>();
     private IReadOnlyList<IBrowserFile> selectedFiles = [];
-    private string timeZoneId = TimeZoneDefaults.Display;
+    private string timeZoneId = TimeZoneDefaults.Utc;
     private bool iisLogsAreUtc = true;
     private bool combineMultiline = true;
     private bool uploadBusy;
