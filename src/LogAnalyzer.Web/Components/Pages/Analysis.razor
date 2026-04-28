@@ -81,6 +81,71 @@ else
             </div>
         </details>
 
+        <section class="incident-map-panel @(selectedEvent is null ? "is-empty" : "") @(showIncidentTimeline ? "" : "is-collapsed")">
+            <div class="panel-heading incident-map-heading">
+                <div>
+                    <span class="eyebrow">Карта инцидента</span>
+                    <h2>Timeline выбранной проблемы</h2>
+                </div>
+                <div class="panel-actions incident-map-actions">
+                    @if (selectedEvent is not null)
+                    {
+                        <div class="incident-map-stats">
+                            <span>@incidentTimeline.TotalCount событий</span>
+                            <span>пик @incidentTimeline.MaxBucketCount</span>
+                            <span>bucket @FormatBucket(incidentTimeline.Bucket)</span>
+                        </div>
+                    }
+                    <button class="ghost-button" @onclick="ToggleIncidentTimeline">
+                        @(showIncidentTimeline ? "Скрыть" : "Показать")
+                    </button>
+                </div>
+            </div>
+
+            @if (!showIncidentTimeline)
+            {
+                <div class="incident-map-collapsed">
+                    @if (selectedEvent is null)
+                    {
+                        <span>Карта свернута. Выберите проблему, чтобы построить timeline.</span>
+                    }
+                    else if (incidentTimeline.IsEmpty)
+                    {
+                        <span>Карта свернута. В выбранном окне событий нет.</span>
+                    }
+                    else
+                    {
+                        <span>@FormatTime(incidentTimeline.FromUtc) - @FormatTime(incidentTimeline.ToUtc)</span>
+                    }
+                </div>
+            }
+            else if (selectedEvent is null)
+            {
+                <div class="incident-map-empty">
+                    <strong>Выберите проблему</strong>
+                    <span>Timeline покажет всплески ошибок вокруг выбранного события.</span>
+                </div>
+            }
+            else if (incidentTimeline.IsEmpty)
+            {
+                <div class="incident-map-empty">
+                    <strong>В этом окне нет событий</strong>
+                    <span>Измените окно корреляции или набор логов.</span>
+                </div>
+            }
+            else
+            {
+                <div class="incident-chart-frame">
+                    <div id="@timelineChartElementId" class="incident-chart" role="img" aria-label="Timeline инцидента"></div>
+                </div>
+                <div class="timeline-footer">
+                    <span>@FormatTime(incidentTimeline.FromUtc)</span>
+                    <span>Выделите колесом/ползунком нужный фрагмент, кликните по всплеску для фокуса</span>
+                    <span>@FormatTime(incidentTimeline.ToUtc)</span>
+                </div>
+            }
+        </section>
+
         <main class="@StageClass">
             @if (showStep1)
             {

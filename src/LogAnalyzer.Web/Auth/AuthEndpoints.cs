@@ -8,14 +8,14 @@ public static class AuthEndpoints
 {
     public static IEndpointRouteBuilder MapLogAnalyzerAuth(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/login", (HttpContext context, IOptions<AppAuthenticationOptions> options) =>
+        endpoints.MapGet("/auth/yandex", (HttpContext context, IOptions<AppAuthenticationOptions> options) =>
         {
             if (!options.Value.Enabled)
             {
-                return Results.Redirect("/");
+                return Results.Redirect(ReadSafeReturnUrl(context) ?? "/");
             }
 
-            var properties = new AuthenticationProperties { RedirectUri = "/" };
+            var properties = new AuthenticationProperties { RedirectUri = ReadSafeReturnUrl(context) ?? "/" };
             return Results.Challenge(properties, ["Yandex"]);
         });
 
@@ -34,5 +34,20 @@ public static class AuthEndpoints
             "text/plain; charset=utf-8"));
 
         return endpoints;
+    }
+
+    private static string? ReadSafeReturnUrl(HttpContext context)
+    {
+        var returnUrl = context.Request.Query["returnUrl"].FirstOrDefault()
+            ?? context.Request.Query["ReturnUrl"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(returnUrl))
+        {
+            return null;
+        }
+
+        return Uri.TryCreate(returnUrl, UriKind.Relative, out _) && returnUrl.StartsWith("/", StringComparison.Ordinal)
+            ? returnUrl
+            : null;
     }
 }

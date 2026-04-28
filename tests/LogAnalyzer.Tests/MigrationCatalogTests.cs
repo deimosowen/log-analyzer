@@ -1,5 +1,6 @@
 using LogAnalyzer.Infrastructure.ClickHouse.Migrations;
 using LogAnalyzer.Infrastructure.Migrations;
+using LogAnalyzer.Infrastructure.Postgres.Migrations;
 using LogAnalyzer.Infrastructure.Sqlite.Migrations;
 
 namespace LogAnalyzer.Tests;
@@ -10,6 +11,14 @@ public sealed class MigrationCatalogTests
     public void DiscoversSqliteMetadataMigrationsInVersionOrder()
     {
         var migrations = DatabaseMigrationCatalog.Load<SqliteMetadataMigration>();
+
+        Assert.Equal([1, 2], migrations.Select(static migration => migration.Version));
+    }
+
+    [Fact]
+    public void DiscoversPostgresMetadataMigrationsInVersionOrder()
+    {
+        var migrations = DatabaseMigrationCatalog.Load<PostgresMetadataMigration>();
 
         Assert.Equal([1, 2], migrations.Select(static migration => migration.Version));
     }

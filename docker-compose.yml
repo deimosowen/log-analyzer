@@ -3,6 +3,8 @@ services:
     image: deimosowen/log-analyzer:latest
     restart: unless-stopped
     depends_on:
+      postgres:
+        condition: service_healthy
       clickhouse:
         condition: service_healthy
     ports:
@@ -12,6 +14,12 @@ services:
       ASPNETCORE_URLS: "http://+:8080"
       Storage__RootPath: "/app/storage"
       Sqlite__DatabasePath: "/app/data/log-analyzer.db"
+      Metadata__Provider: "${METADATA_PROVIDER:-PostgreSQL}"
+      Postgres__Host: "postgres"
+      Postgres__Port: "5432"
+      Postgres__Database: "${POSTGRES_DB:-log_analyzer}"
+      Postgres__Username: "${POSTGRES_USER:-log_analyzer}"
+      Postgres__Password: "${POSTGRES_PASSWORD:-log_analyzer_password}"
       ClickHouse__Enabled: "true"
       ClickHouse__Endpoint: "http://clickhouse:8123/"
       ClickHouse__Database: "${CLICKHOUSE_DB:-log_analyzer}"
@@ -25,8 +33,24 @@ services:
       # Add allowed domains only when needed:
       # Authentication__AllowedEmailDomains__0: "example.com"
     volumes:
-      - log-analyzer-data:/app/data
-      - log-analyzer-storage:/app/storage
+      - ./data/log-analyzer:/app/data
+      - ./data/storage:/app/storage
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-log_analyzer}"
+      POSTGRES_USER: "${POSTGRES_USER:-log_analyzer}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-log_analyzer_password}"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   clickhouse:
     image: clickhouse:lts
@@ -40,8 +64,8 @@ services:
       - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
       - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"
     volumes:
-      - clickhouse-data:/var/lib/clickhouse
-      - clickhouse-logs:/var/log/clickhouse-server
+      - ./data/clickhouse:/var/lib/clickhouse
+      - ./data/clickhouse-logs:/var/log/clickhouse-server
     healthcheck:
       test:
         [
@@ -56,9 +80,3 @@ services:
       nofile:
         soft: 262144
         hard: 262144
-
-volumes:
-  log-analyzer-data:
-  log-analyzer-storage:
-  clickhouse-data:
-  clickhouse-logs:

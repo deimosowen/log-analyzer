@@ -1,0 +1,25 @@
+.public-shell {
+    min-height: 100vh;
+    background:
+        linear-gradient(90deg, rgba(15, 107, 143, 0.07) 1px, transparent 1px) 0 0 / 42px 42px,
+        linear-gradient(180deg, #f8fbfd 0%, #edf3f7 100%);
+}
+
+#blazor-error-ui {
+    background: #fff8db;
+    bottom: 0;
+    box-shadow: 0 -1px 12px rgba(15, 23, 42, 0.18);
+    display: none;
+    left: 0;
+    padding: 0.75rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}

@@ -1,0 +1,18 @@
+@page "/login"
+@layout Layout.PublicLayout
+@rendermode InteractiveServer
+@attribute [AllowAnonymous]
+
+<PageTitle>Вход в Log Analyzer</PageTitle>
+
+<LoginLanding ReturnUrl="@SafeReturnUrl" />
+
+@code {
+    [SupplyParameterFromQuery(Name = "ReturnUrl")]
+    public string? ReturnUrlFromCookie { get; set; }
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    private string SafeReturnUrl => LoginLanding.NormalizeReturnUrl(ReturnUrl ?? ReturnUrlFromCookie);
+}

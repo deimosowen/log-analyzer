@@ -27,6 +27,7 @@ The main dashboard shows the current user's incident count, uploads, analyzed lo
   - `Time` contains time-zone conversion helpers and defaults.
 - `LogAnalyzer.Infrastructure`
   - `Migrations` contains shared migration primitives.
+  - `Postgres` contains PostgreSQL metadata storage, repository, and migrations.
   - `Sqlite` contains metadata/event repositories and SQLite migrations.
   - `ClickHouse` contains ClickHouse event storage, SQL client, and migrations.
   - `Storage` contains filesystem upload/archive storage.
@@ -38,7 +39,12 @@ The main dashboard shows the current user's incident count, uploads, analyzed lo
 
 ## Storage
 
-Metadata is stored in SQLite. Events use a configurable `ILogEventStore`:
+Metadata storage is selected through `Metadata:Provider`:
+
+- Docker/production uses PostgreSQL metadata storage.
+- Local development can keep SQLite metadata storage with `Metadata:Provider=SQLite`.
+
+Events use a configurable `ILogEventStore`:
 
 - Local development defaults to SQLite event storage.
 - Set `ClickHouse:Enabled=true` in `appsettings.json` to use ClickHouse.
@@ -50,22 +56,44 @@ Uploaded files, local SQLite data, build output, and screenshots are ignored by 
 Database schema is updated through `IDatabaseMigrator` implementations at application startup.
 
 - SQLite metadata schema: `SqliteMetadataMigrator`.
+- PostgreSQL metadata schema: `PostgresMetadataMigrator`.
 - SQLite event schema: `SqliteEventStoreMigrator`.
 - ClickHouse event schema: `ClickHouseEventStoreMigrator`.
 
 Each migrator writes applied versions into `schema_migrations`. Migration SQL lives in one file per version and is grouped by database and schema:
 
 - SQLite metadata: `src/LogAnalyzer.Infrastructure/Sqlite/Migrations/Metadata/V###_*.cs`.
+- PostgreSQL metadata: `src/LogAnalyzer.Infrastructure/Postgres/Migrations/Metadata/V###_*.cs`.
 - SQLite events: `src/LogAnalyzer.Infrastructure/Sqlite/Migrations/Events/V###_*.cs`.
 - ClickHouse events: `src/LogAnalyzer.Infrastructure/ClickHouse/Migrations/Events/V###_*.cs`.
 
 Migration files are discovered automatically through marker base classes:
 
 - SQLite metadata migrations inherit `SqliteMetadataMigration`.
+- PostgreSQL metadata migrations inherit `PostgresMetadataMigration`.
 - SQLite event migrations inherit `SqliteEventMigration`.
 - ClickHouse event migrations inherit `ClickHouseEventMigration`.
 
 To extend a schema, add the next `V###_*.cs` file in the relevant folder and inherit the matching base class. The catalog will load it automatically, sort migrations by `Version`, and fail fast on duplicate or invalid versions.
+
+## PostgreSQL Metadata
+
+Production deployments should use PostgreSQL for metadata:
+
+```json
+"Metadata": {
+  "Provider": "PostgreSQL"
+},
+"Postgres": {
+  "Host": "postgres",
+  "Port": 5432,
+  "Database": "log_analyzer",
+  "Username": "log_analyzer",
+  "Password": "<password>"
+}
+```
+
+`Postgres:ConnectionString` can be used instead of the individual host/database/user settings. SQLite remains available for local development by setting `Metadata:Provider=SQLite`.
 
 ## Authentication
 
@@ -103,16 +131,16 @@ Open `http://localhost:5071`.
 Build and push the application image:
 
 ```powershell
-docker build -t deimosowen/log-analyzer:1.0.4 -t deimosowen/log-analyzer:latest .
-docker push deimosowen/log-analyzer:1.0.4
+docker build -t deimosowen/log-analyzer:1.1.0 -t deimosowen/log-analyzer:latest .
+docker push deimosowen/log-analyzer:1.1.0
 docker push deimosowen/log-analyzer:latest
 ```
 
-Deploy with ClickHouse:
+Deploy with PostgreSQL metadata storage and ClickHouse event storage:
 
 ```powershell
 Copy-Item .env.example .env
-# Fill YANDEX_CLIENT_ID and YANDEX_CLIENT_SECRET in .env.
+# Fill YANDEX_CLIENT_ID, YANDEX_CLIENT_SECRET, and POSTGRES_PASSWORD in .env.
 docker compose up -d
 ```
 
@@ -124,8 +152,24 @@ https://<your-host>/signin-yandex
 
 Also set `PUBLIC_ORIGIN=https://<your-host>` in `.env`.
 
-`docker-compose.yml` keeps SQLite metadata and uploaded files in named volumes and stores indexed log events in ClickHouse. The image does not include local `appsettings*.json`; production settings are passed through environment variables.
+`docker-compose.yml` keeps PostgreSQL data, uploaded files, and ClickHouse data under `./data` next to the compose file. The image does not include local `appsettings*.json`; production settings are passed through environment variables.
 The compose file uses `deimosowen/log-analyzer:latest` so routine patch releases do not require editing the image tag.
+
+Backup PostgreSQL metadata:
+
+```bash
+docker compose exec postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > metadata-backup.sql
+```
+
+Restore PostgreSQL metadata into an empty database:
+
+```bash
+docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"' < metadata-backup.sql
+```
+
+Back up `./data/storage` for uploaded source logs and `./data/clickhouse` or ClickHouse-native backups for indexed events.
+
+Existing SQLite metadata is not copied automatically when switching `Metadata:Provider` to PostgreSQL. For an existing installation, keep the old SQLite database file intact and run a dedicated one-shot transfer before cutting production traffic over to PostgreSQL.
 
 ## Verify
 

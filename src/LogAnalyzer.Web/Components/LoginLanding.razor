@@ -1,0 +1,120 @@
+@rendermode InteractiveServer
+@attribute [AllowAnonymous]
+@inject IOptions<AppAuthenticationOptions> AuthOptions
+
+<div class="login-page">
+    <header class="login-header">
+        <a class="login-brand" href="/">
+            <span>LA</span>
+            <strong>Log Analyzer</strong>
+        </a>
+        <nav>
+            <a href="/about">О проекте</a>
+            <a href="@ApplicationInfo.RepositoryUrl" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+    </header>
+
+    <section class="login-hero">
+        <div class="login-copy">
+            <span class="login-eyebrow">Разбор инцидентов по логам</span>
+            <h1>Выберите проблему, а сервис соберет события вокруг нее.</h1>
+            <p>
+                Log Analyzer помогает сверить приложение, IIS и фоновые задачи в одном временном окне,
+                с учетом часовых поясов и без ручного поиска по десяткам файлов.
+            </p>
+
+            @if (AuthOptions.Value.Enabled)
+            {
+                <AuthorizeView>
+                    <Authorized>
+                        <div class="login-actions">
+                            <a class="login-primary-action" href="@SafeReturnUrl">Открыть дашборд</a>
+                            <a class="login-secondary-action" href="/logout">Выйти</a>
+                        </div>
+                    </Authorized>
+                    <NotAuthorized>
+                        <div class="login-actions">
+                            <a class="login-primary-action yandex-action" href="@YandexLoginUrl">
+                                <span>Я</span>
+                                Войти через Яндекс
+                            </a>
+                        </div>
+                    </NotAuthorized>
+                </AuthorizeView>
+            }
+            else
+            {
+                <div class="login-actions">
+                    <a class="login-primary-action" href="@SafeReturnUrl">Открыть локальный режим</a>
+                    <a class="login-secondary-action" href="/about">Подробнее</a>
+                </div>
+            }
+        </div>
+
+        <div class="login-visual" aria-hidden="true">
+            <div class="incident-window">
+                <div class="window-bar">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <strong>Инцидент API</strong>
+                </div>
+                <div class="incident-summary">
+                    <div>
+                        <small>Проблемы</small>
+                        <strong>184</strong>
+                    </div>
+                    <div>
+                        <small>Логи</small>
+                        <strong>12</strong>
+                    </div>
+                    <div>
+                        <small>Окно</small>
+                        <strong>90 c</strong>
+                    </div>
+                </div>
+                <div class="timeline-preview">
+                    <i style="--height: 26%"></i>
+                    <i style="--height: 42%"></i>
+                    <i style="--height: 34%"></i>
+                    <i style="--height: 78%"></i>
+                    <i class="danger" style="--height: 94%"></i>
+                    <i class="danger" style="--height: 84%"></i>
+                    <i style="--height: 52%"></i>
+                    <i style="--height: 38%"></i>
+                </div>
+                <div class="log-preview-list">
+                    <div class="selected">
+                        <span>ERROR</span>
+                        <strong>Timeout while calling billing gateway</strong>
+                    </div>
+                    <div>
+                        <span>WARN</span>
+                        <strong>IIS request /api/payments completed in 14320 ms</strong>
+                    </div>
+                    <div>
+                        <span>ERROR</span>
+                        <strong>Hangfire retry limit exceeded</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+@code {
+    [Parameter] public string? ReturnUrl { get; set; }
+
+    private string SafeReturnUrl => NormalizeReturnUrl(ReturnUrl);
+
+    private string YandexLoginUrl => $"/auth/yandex?returnUrl={Uri.EscapeDataString(SafeReturnUrl)}";
+
+    public static string NormalizeReturnUrl(string? returnUrl)
+    {
+        return !string.IsNullOrWhiteSpace(returnUrl)
+        && Uri.TryCreate(returnUrl, UriKind.Relative, out _)
+        && returnUrl.StartsWith("/", StringComparison.Ordinal)
+        ? returnUrl
+        : "/";
+    }
+}

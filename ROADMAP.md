@@ -10,6 +10,15 @@
 - Большие данные обрабатываются фоново, с понятным прогрессом и ограничениями.
 - Архитектура не должна завязывать доменную логику на Blazor-компоненты или конкретную БД.
 
+## Правило Покрытия БД
+
+- PostgreSQL используется только как production metadata storage: пользователи, проекты, загрузки, файлы, ошибки импорта, права, заметки, настройки, audit log.
+- SQLite остается local/dev fallback для metadata и легким event-store режимом разработки.
+- ClickHouse остается основным production event-store для больших логов, timeline и агрегатов событий.
+- Любая новая metadata-сущность должна иметь миграции и repository-поддержку для PostgreSQL и SQLite.
+- Любой новый event/read-side запрос должен иметь реализацию для ClickHouse и SQLite. PostgreSQL event-store не добавляем, пока явно не изменим архитектурное решение.
+- Тесты должны покрывать общую application-логику и минимум один storage backend; для metadata-задач обязательно проверять PostgreSQL migration catalog и SQLite fallback.
+
 ## Этап 0. Переезд Metadata DB С SQLite На PostgreSQL
 
 Цель: до активного роста функциональности заменить SQLite как основное хранилище metadata на PostgreSQL.
@@ -59,7 +68,7 @@ SQLite удобен для MVP и локального запуска, но да
 
 ### Технические Задачи
 
-1. Ввести настройки `Postgres`:
+1. [x] Ввести настройки `Postgres`:
    - `ConnectionString`;
    - `Host`;
    - `Port`;
@@ -67,18 +76,19 @@ SQLite удобен для MVP и локального запуска, но да
    - `Username`;
    - `Password`;
    - `Enabled` или `Provider`.
-2. Решить модель выбора metadata provider:
+2. [x] Решить модель выбора metadata provider:
    - вариант A: `Metadata:Provider = PostgreSQL | SQLite`;
    - вариант B: PostgreSQL всегда в production, SQLite только dev fallback.
-3. Добавить `PostgresConnectionFactory`.
-4. Добавить `PostgresMetadataMigrator`.
-5. Добавить `PostgresMetadataMigration` marker base class.
-6. Переписать SQL metadata migrations под PostgreSQL.
-7. Реализовать `PostgresMetadataRepository`.
-8. Убрать SQLite-специфичные SQL-конструкции из application-слоя, если такие появятся.
-9. Добавить интеграционные тесты repository.
-10. Обновить Docker Compose и `.env.example`.
-11. Добавить команды backup/restore.
+3. [x] Добавить `PostgresConnectionFactory`.
+4. [x] Добавить `PostgresMetadataMigrator`.
+5. [x] Добавить `PostgresMetadataMigration` marker base class.
+6. [x] Переписать SQL metadata migrations под PostgreSQL.
+7. [x] Реализовать `PostgresMetadataRepository`.
+8. [x] Убрать SQLite-специфичные SQL-конструкции из application-слоя, если такие появятся.
+9. [ ] Добавить интеграционные тесты repository.
+10. [x] Обновить Docker Compose и `.env.example`.
+11. [x] Добавить команды backup/restore.
+12. [ ] Добавить one-shot перенос существующих SQLite metadata в PostgreSQL.
 
 ### Миграция Данных
 
@@ -105,7 +115,7 @@ SQLite удобен для MVP и локального запуска, но да
 
 - Усложнение локального запуска.
 - Нужно внимательно сохранить compatibility с текущими migration abstractions.
-- Нужно не смешать metadata storage и event storage: PostgreSQL заменяет SQLite metadata, но ClickHouse остается основным event store для больших логов.
+- Нужно не смешать metadata storage и event storage: PostgreSQL заменяет SQLite metadata, но ClickHouse остается основным event store для больших логов, а SQLite event store остается dev fallback.
 - При неверных volume/bind настройках можно потерять данные, поэтому compose должен быть максимально явным.
 
 ### Рекомендуемое Решение
@@ -150,7 +160,8 @@ SQLite удобен для MVP и локального запуска, но да
 
 - Добавить read model для агрегированных точек timeline.
 - Для ClickHouse лучше считать бакеты на стороне БД.
-- Для SQLite можно начать с простого in-memory группирования на ограниченном диапазоне.
+- Для SQLite нужен fallback-запрос с группировкой по bucket, чтобы локальный режим не отставал от ClickHouse.
+- Для PostgreSQL на этом этапе проверить только metadata-provider совместимость: проекты, log files и права доступа берутся из PostgreSQL, но события и timeline читаются из ClickHouse/SQLite event store.
 - UI лучше делать отдельным компонентом, не встраивать логику в `Analysis.razor`.
 
 ## Этап 2. IIS-Focused Анализ
@@ -187,6 +198,7 @@ SQLite удобен для MVP и локального запуска, но да
 
 - Нужны отдельные read models для HTTP-агрегатов.
 - Для IIS-событий стоит нормализовать поля в `LogEvent.Properties`.
+- Event-агрегаты реализовать для ClickHouse и SQLite. PostgreSQL затрагивать только если появятся metadata-настройки фильтров, сохраненные представления или пользовательские пресеты.
 - Для UI лучше использовать агрегированную таблицу: endpoint, status group, count, p95 time, max time.
 
 ## Этап 3. Закладки, Комментарии И Вердикт
@@ -225,6 +237,7 @@ SQLite удобен для MVP и локального запуска, но да
   - `incident_notes`;
   - `event_bookmarks`;
   - возможно `project_status`.
+- Эти metadata-миграции должны быть реализованы отдельно для PostgreSQL и SQLite.
 - Не хранить комментарии в event store, это metadata.
 - Добавить application-сервис для работы с заметками.
 
@@ -262,6 +275,7 @@ SQLite удобен для MVP и локального запуска, но да
 
 - Сохранить текущий `IncidentMarkdownReportBuilder`, но расширить модель запроса.
 - Не смешивать построение отчета с UI.
+- Если отчеты, шаблоны или история выгрузок будут сохраняться, это metadata: нужны PostgreSQL и SQLite миграции.
 - Для HTML-версии можно использовать простой server-side renderer или шаблоны.
 
 ## Этап 5. Шаринг И Командная Работа
@@ -300,6 +314,7 @@ SQLite удобен для MVP и локального запуска, но да
 - Добавить таблицы:
   - `project_members`;
   - `audit_log`.
+- Таблицы доступа и audit log являются metadata: обязательны миграции и repository-поддержка для PostgreSQL и SQLite.
 - Не размазывать проверки доступа по endpoint-ам.
 
 ## Этап 6. Health, Admin И Retention
@@ -313,8 +328,9 @@ SQLite удобен для MVP и локального запуска, но да
 ### Функции
 
 - Health page:
-  - SQLite доступен;
-  - ClickHouse доступен;
+  - PostgreSQL metadata доступен;
+  - SQLite metadata/event fallback доступен в local/dev режиме;
+  - ClickHouse event store доступен;
   - storage доступен;
   - очередь импорта работает.
 - Страница системной статистики:
@@ -322,6 +338,7 @@ SQLite удобен для MVP и локального запуска, но да
   - количество логов;
   - размер storage;
   - количество событий;
+  - размер PostgreSQL metadata;
   - размер ClickHouse.
 - Настройки лимитов:
   - размер файла;
@@ -342,6 +359,7 @@ SQLite удобен для MVP и локального запуска, но да
 ### Технические заметки
 
 - Нужна роль администратора.
+- Роль администратора, лимиты и retention-настройки хранятся в metadata: PostgreSQL и SQLite миграции обязательны.
 - Для storage size нужен filesystem scanner с ограничением частоты.
 - Retention лучше делать background job-ом.
 
@@ -374,6 +392,7 @@ SQLite удобен для MVP и локального запуска, но да
 ### Технические заметки
 
 - Проверить batch insert в SQLite и ClickHouse.
+- Metadata-прогресс, дедупликация и статусы должны одинаково работать через PostgreSQL и SQLite metadata providers.
 - Индексацию лучше держать вне UI-потока.
 - Возможно, в будущем выделить worker в отдельный контейнер.
 
@@ -405,7 +424,7 @@ SQLite удобен для MVP и локального запуска, но да
 
 - Нужен слой connector-ов.
 - Конфигурация интеграций должна жить отдельно от core анализа.
-- Для секретов понадобится защищенное хранение или внешний secret manager.
+- Для секретов понадобится защищенное хранение или внешний secret manager; если часть конфигурации хранится в metadata DB, нужны PostgreSQL и SQLite миграции.
 
 ## Этап 9. AI-Assisted Анализ
 
@@ -463,6 +482,7 @@ SQLite удобен для MVP и локального запуска, но да
 - обновление README и `.env.example`;
 - backup/restore инструкции;
 - smoke-test текущего пользовательского сценария на PostgreSQL.
+- явное решение: PostgreSQL не является event-store, события остаются в ClickHouse или SQLite fallback.
 
 Не входит:
 
@@ -478,6 +498,7 @@ SQLite удобен для MVP и локального запуска, но да
 - Новая production-установка работает без SQLite metadata DB.
 - Все текущие пользовательские сценарии проходят на PostgreSQL.
 - SQLite либо остается dev fallback, либо явно удаляется из production-конфига.
+- Event-store сценарии продолжают работать через ClickHouse в production и SQLite в local/dev; PostgreSQL используется только для metadata.
 - Данные PostgreSQL хранятся в ожидаемой папке/volume и не теряются после `docker-compose down`.
 - Docker image и compose обновлены.
 
@@ -494,6 +515,7 @@ SQLite удобен для MVP и локального запуска, но да
 - скрытие успешных IIS-запросов в корреляции;
 - быстрый drill-down из агрегата в конкретные события;
 - обновление отчета, чтобы он включал timeline summary.
+- проверка сценария с `Metadata:Provider=PostgreSQL` и event-store ClickHouse/SQLite.
 
 Не входит:
 
@@ -507,4 +529,5 @@ SQLite удобен для MVP и локального запуска, но да
 - Пользователь может открыть проект с большим количеством IIS-запросов и не утонуть в строках.
 - Выбранная ошибка имеет визуальный контекст до и после события.
 - Отчет содержит краткую временную сводку.
+- Timeline и IIS summary не требуют PostgreSQL event-store; PostgreSQL покрывает только metadata-часть сценария.
 - Сборка, тесты и Docker image проходят.

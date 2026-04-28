@@ -1,6 +1,32 @@
-﻿<Router AppAssembly="typeof(Program).Assembly">
+@inject IOptions<AppAuthenticationOptions> AuthOptions
+@inject NavigationManager Navigation
+
+<Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        @if (ShouldRequireAuthentication(routeData))
+        {
+            <AuthorizeView>
+                <Authorized>
+                    <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+                </Authorized>
+                <NotAuthorized>
+                    <LayoutView Layout="typeof(Layout.PublicLayout)">
+                        <LoginLanding ReturnUrl="@CurrentReturnUrl" />
+                    </LayoutView>
+                </NotAuthorized>
+                <Authorizing>
+                    <LayoutView Layout="typeof(Layout.PublicLayout)">
+                        <section class="empty-state">
+                            <h1>Проверяем сессию</h1>
+                        </section>
+                    </LayoutView>
+                </Authorizing>
+            </AuthorizeView>
+        }
+        else
+        {
+            <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        }
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
     <NotFound>
@@ -13,3 +39,26 @@
         </LayoutView>
     </NotFound>
 </Router>
+
+@code {
+    private bool ShouldRequireAuthentication(RouteData routeData)
+    {
+        return AuthOptions.Value.Enabled && !AllowsAnonymous(routeData);
+    }
+
+    private static bool AllowsAnonymous(RouteData routeData)
+    {
+        return routeData.PageType
+            .GetCustomAttributes(typeof(AllowAnonymousAttribute), inherit: true)
+            .Any();
+    }
+
+    private string CurrentReturnUrl
+    {
+        get
+        {
+            var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
+            return string.IsNullOrWhiteSpace(relativePath) ? "/" : $"/{relativePath}";
+        }
+    }
+}

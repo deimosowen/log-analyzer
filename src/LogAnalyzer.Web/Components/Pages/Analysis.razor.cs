@@ -1,3 +1,4 @@
+using System.Globalization;
 using LogAnalyzer.Application;
 using LogAnalyzer.Application.Analysis;
 using LogAnalyzer.Application.Reporting;
@@ -12,7 +13,7 @@ using Microsoft.JSInterop;
 
 namespace LogAnalyzer.Web.Components.Pages;
 
-public partial class Analysis
+public partial class Analysis : IAsyncDisposable
 {
     private static readonly string[] ProblemLevels = ProblemEventLevels.Default;
 
@@ -35,6 +36,9 @@ public partial class Analysis
     private HashSet<string> selectedLevels = new(StringComparer.OrdinalIgnoreCase);
     private List<LogEvent> correlatedEvents = [];
     private IReadOnlyList<CorrelationGroup> correlationGroups = [];
+    private IncidentTimeline incidentTimeline = IncidentTimeline.Empty;
+    private readonly string timelineChartElementId = $"incident-timeline-{Guid.NewGuid():N}";
+    private DotNetObjectReference<Analysis>? timelineChartReference;
     private Virtualize<LogEvent>? problemVirtualize;
     private LogEvent? selectedEvent;
     private long correlatedTotalCount;
@@ -44,6 +48,8 @@ public partial class Analysis
     private int afterSeconds = EventSearchDefaults.DefaultAfterSeconds;
     private bool showStep1 = true;
     private bool showStep2 = true;
+    private bool showIncidentTimeline;
+    private bool timelineChartDirty;
     private CorrelationDisplayMode correlationMode = CorrelationDisplayMode.Summary;
 
     private string StageClass => (showStep1, showStep2) switch
@@ -108,6 +114,32 @@ public partial class Analysis
         stats = await EventStore.GetStatsByLogFileAsync(ProjectId, CancellationToken.None);
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            timelineChartReference = DotNetObjectReference.Create(this);
+        }
+
+        if (timelineChartDirty)
+        {
+            await SynchronizeTimelineChartAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        timelineChartReference?.Dispose();
+
+        try
+        {
+            await JsRuntime.InvokeVoidAsync("logAnalyzerTimeline.dispose", timelineChartElementId);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
     private async ValueTask<ItemsProviderResult<LogEvent>> LoadProblems(ItemsProviderRequest request)
     {
         var result = await EventStore.SearchAsync(
@@ -168,6 +200,33 @@ public partial class Analysis
         correlatedEvents = result.Events.ToList();
         correlatedTotalCount = result.TotalCount;
         correlationGroups = CorrelationGrouping.GroupProblemEvents(correlatedEvents);
+        await RefreshIncidentTimeline();
+    }
+
+    private async Task RefreshIncidentTimeline()
+    {
+        if (selectedEvent is null)
+        {
+            incidentTimeline = IncidentTimeline.Empty;
+            timelineChartDirty = true;
+            return;
+        }
+
+        var from = selectedEvent.TimestampUtc.AddSeconds(-Math.Max(0, beforeSeconds));
+        var to = selectedEvent.TimestampUtc.AddSeconds(Math.Max(0, afterSeconds));
+        var bucket = IncidentTimelineBuilder.ChooseBucket(from, to);
+        var points = await EventStore.GetTimelineAsync(new TimelineRequest
+        {
+            ProjectId = ProjectId,
+            FromUtc = from,
+            ToUtc = to,
+            Bucket = bucket,
+            LogFileIds = selectedLogIds.ToArray(),
+            Levels = ActiveLevels()
+        }, CancellationToken.None);
+
+        incidentTimeline = IncidentTimelineBuilder.Build(points, from, to, bucket, selectedEvent.TimestampUtc);
+        timelineChartDirty = true;
     }
 
     private async Task SelectProblem(LogEvent item)
@@ -193,6 +252,8 @@ public partial class Analysis
         correlatedEvents.Clear();
         correlationGroups = [];
         correlatedTotalCount = 0;
+        incidentTimeline = IncidentTimeline.Empty;
+        timelineChartDirty = true;
     }
 
     private void ToggleStep1()
@@ -205,6 +266,12 @@ public partial class Analysis
         showStep2 = !showStep2;
     }
 
+    private void ToggleIncidentTimeline()
+    {
+        showIncidentTimeline = !showIncidentTimeline;
+        timelineChartDirty = true;
+    }
+
     private void ShowCorrelationSummary()
     {
         correlationMode = CorrelationDisplayMode.Summary;
@@ -213,6 +280,43 @@ public partial class Analysis
     private void ShowCorrelationEvents()
     {
         correlationMode = CorrelationDisplayMode.Events;
+    }
+
+    private async Task FocusTimelineBucket(IncidentTimelineBucket bucket)
+    {
+        if (selectedEvent is null || bucket.TotalCount == 0)
+        {
+            return;
+        }
+
+        beforeSeconds = Math.Max(0, (int)Math.Ceiling((selectedEvent.TimestampUtc - bucket.BucketUtc).TotalSeconds));
+        afterSeconds = Math.Max(0, (int)Math.Ceiling((bucket.BucketEndUtc - selectedEvent.TimestampUtc).TotalSeconds));
+        correlationMode = CorrelationDisplayMode.Events;
+        await RefreshCorrelation();
+    }
+
+    [JSInvokable]
+    public async Task FocusTimelineBucketFromChart(string bucketUtc)
+    {
+        if (!DateTimeOffset.TryParse(
+                bucketUtc,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var selectedBucketUtc))
+        {
+            return;
+        }
+
+        var bucket = incidentTimeline.Buckets.FirstOrDefault(
+            item => item.BucketUtc.ToUniversalTime() == selectedBucketUtc.ToUniversalTime());
+
+        if (bucket is null)
+        {
+            return;
+        }
+
+        await FocusTimelineBucket(bucket);
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ExportMarkdownReport()
@@ -351,5 +455,76 @@ public partial class Analysis
     private static string DisplayLevel(string level)
     {
         return string.IsNullOrWhiteSpace(level) ? "RAW" : level;
+    }
+
+    private async Task SynchronizeTimelineChartAsync()
+    {
+        if (!showIncidentTimeline || selectedEvent is null || incidentTimeline.IsEmpty)
+        {
+            await JsRuntime.InvokeVoidAsync("logAnalyzerTimeline.dispose", timelineChartElementId);
+            timelineChartDirty = false;
+            return;
+        }
+
+        timelineChartReference ??= DotNetObjectReference.Create(this);
+        var rendered = await JsRuntime.InvokeAsync<bool>(
+            "logAnalyzerTimeline.render",
+            timelineChartElementId,
+            BuildTimelineChartPayload(),
+            timelineChartReference);
+
+        timelineChartDirty = !rendered;
+    }
+
+    private object BuildTimelineChartPayload()
+    {
+        return new
+        {
+            bucketLabel = FormatBucket(incidentTimeline.Bucket),
+            totalCount = incidentTimeline.TotalCount,
+            peakCount = incidentTimeline.MaxBucketCount,
+            buckets = incidentTimeline.Buckets.Select(bucket => new
+            {
+                bucketUtc = bucket.BucketUtc.ToString("O", CultureInfo.InvariantCulture),
+                label = FormatChartBucketLabel(bucket.BucketUtc),
+                fullLabel = FormatTime(bucket.BucketUtc),
+                fatal = bucket.FatalCount,
+                error = bucket.ErrorCount,
+                warn = bucket.WarnCount,
+                info = bucket.InfoCount,
+                other = bucket.OtherCount,
+                total = bucket.TotalCount,
+                anchor = bucket.ContainsAnchor
+            }).ToArray()
+        };
+    }
+
+    private string FormatChartBucketLabel(DateTimeOffset timestampUtc)
+    {
+        try
+        {
+            var zone = TimeZoneHelper.Find(displayTimeZoneId);
+            var local = TimeZoneInfo.ConvertTime(timestampUtc, zone);
+            return incidentTimeline.Bucket.TotalMinutes >= 1
+                ? local.ToString("HH:mm", CultureInfo.InvariantCulture)
+                : local.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        }
+        catch
+        {
+            var local = timestampUtc.ToLocalTime();
+            return incidentTimeline.Bucket.TotalMinutes >= 1
+                ? local.ToString("HH:mm", CultureInfo.InvariantCulture)
+                : local.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        }
+    }
+
+    private static string FormatBucket(TimeSpan bucket)
+    {
+        if (bucket.TotalMinutes >= 1)
+        {
+            return $"{bucket.TotalMinutes:0} мин";
+        }
+
+        return $"{bucket.TotalSeconds:0} сек";
     }
 }

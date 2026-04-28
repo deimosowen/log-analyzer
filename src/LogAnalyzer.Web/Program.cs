@@ -9,7 +9,6 @@ using LogAnalyzer.Web.Components;
 using LogAnalyzer.Web.Services;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 var maxUploadBytes = builder.Configuration.GetValue<long?>("Storage:MaxUploadBytes") ??
@@ -59,13 +58,8 @@ app.UseAntiforgery();
 app.MapLogAnalyzerAuth();
 app.MapLogAnalyzerApi();
 
-var components = app.MapRazorComponents<App>()
+app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
-
-if (app.Services.GetRequiredService<IOptions<AppAuthenticationOptions>>().Value.Enabled)
-{
-    components.RequireAuthorization();
-}
 
 await InitializeStorageAsync(app.Services);
 

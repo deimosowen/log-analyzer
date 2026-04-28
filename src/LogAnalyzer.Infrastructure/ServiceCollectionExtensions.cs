@@ -1,7 +1,9 @@
 using LogAnalyzer.Application;
 using LogAnalyzer.Application.Parsing;
 using LogAnalyzer.Infrastructure.ClickHouse;
+using LogAnalyzer.Infrastructure.Metadata;
 using LogAnalyzer.Infrastructure.Migrations;
+using LogAnalyzer.Infrastructure.Postgres;
 using LogAnalyzer.Infrastructure.Sqlite;
 using LogAnalyzer.Infrastructure.Storage;
 using Microsoft.Extensions.Configuration;
@@ -16,12 +18,13 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.Configure<StorageOptions>(configuration.GetSection("Storage"));
+        services.Configure<MetadataOptions>(configuration.GetSection("Metadata"));
+        services.Configure<PostgresOptions>(configuration.GetSection("Postgres"));
         services.Configure<SqliteOptions>(configuration.GetSection("Sqlite"));
         services.Configure<ClickHouseOptions>(configuration.GetSection("ClickHouse"));
 
         services.AddSingleton<SqliteConnectionFactory>();
-        services.AddSingleton<IDatabaseMigrator, SqliteMetadataMigrator>();
-        services.AddSingleton<IMetadataRepository, SqliteMetadataRepository>();
+        AddMetadataStore(services, configuration);
         services.AddSingleton<ILogFileStorage, FileSystemLogStorage>();
         services.AddSingleton<IImportJobQueue, ImportJobQueue>();
         services.AddSingleton<ImportProcessor>();
@@ -47,5 +50,28 @@ public static class ServiceCollectionExtensions
         }
 
         return services;
+    }
+
+    private static void AddMetadataStore(IServiceCollection services, IConfiguration configuration)
+    {
+        var provider = configuration.GetSection("Metadata").Get<MetadataOptions>()?.Provider
+            ?? MetadataProviders.Sqlite;
+
+        if (MetadataProviders.IsPostgreSql(provider))
+        {
+            services.AddSingleton<PostgresConnectionFactory>();
+            services.AddSingleton<IDatabaseMigrator, PostgresMetadataMigrator>();
+            services.AddSingleton<IMetadataRepository, PostgresMetadataRepository>();
+            return;
+        }
+
+        if (MetadataProviders.IsSqlite(provider))
+        {
+            services.AddSingleton<IDatabaseMigrator, SqliteMetadataMigrator>();
+            services.AddSingleton<IMetadataRepository, SqliteMetadataRepository>();
+            return;
+        }
+
+        throw new InvalidOperationException($"Unsupported metadata provider '{provider}'.");
     }
 }
