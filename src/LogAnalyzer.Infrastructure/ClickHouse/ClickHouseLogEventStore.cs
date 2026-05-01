@@ -48,6 +48,7 @@ public sealed class ClickHouseLogEventStore : ILogEventStore
                 ["url"] = logEvent.Url,
                 ["status_code"] = logEvent.StatusCode,
                 ["client_ip"] = logEvent.ClientIp,
+                ["user_name"] = logEvent.UserName,
                 ["server_ip"] = logEvent.ServerIp,
                 ["user_agent"] = logEvent.UserAgent,
                 ["time_taken"] = logEvent.TimeTaken
@@ -144,6 +145,26 @@ public sealed class ClickHouseLogEventStore : ILogEventStore
             row.GetProperty("count").GetInt64())).ToArray();
     }
 
+    public async Task<IisAnalysisResult> GetIisAnalysisAsync(IisAnalysisRequest request, CancellationToken cancellationToken)
+    {
+        var where = BuildWhere(ToSearchRequest(request));
+        var topLimit = Math.Clamp(request.TopLimit, 1, 50);
+        var slowThreshold = Math.Max(0, request.SlowRequestThresholdMs);
+
+        var summary = await ReadIisSummaryAsync(where, slowThreshold, cancellationToken);
+        if (summary.TotalRequests == 0)
+        {
+            return IisAnalysisResult.Empty;
+        }
+
+        return new IisAnalysisResult(
+            summary,
+            await ReadIisEndpointAggregatesAsync(where, "status_code >= 500", topLimit, sortByLatency: false, cancellationToken),
+            await ReadIisEndpointAggregatesAsync(where, "status_code >= 400 AND status_code < 500", topLimit, sortByLatency: false, cancellationToken),
+            await ReadIisEndpointAggregatesAsync(where, $"time_taken >= {slowThreshold}", topLimit, sortByLatency: true, cancellationToken),
+            await ReadSlowRequestsAsync(where, slowThreshold, topLimit, cancellationToken));
+    }
+
     private string BuildWhere(LogEventSearchRequest request)
     {
         var conditions = new List<string>
@@ -202,9 +223,29 @@ public sealed class ClickHouseLogEventStore : ILogEventStore
             conditions.Add($"http_method = {ClickHouseSql.QuoteLiteral(request.HttpMethod.Trim().ToUpperInvariant())}");
         }
 
+        if (request.OnlyHttp)
+        {
+            conditions.Add("http_method != ''");
+        }
+
+        if (request.ExcludeSuccessfulHttp)
+        {
+            conditions.Add("(http_method = '' OR status_code < 200 OR status_code >= 400)");
+        }
+
         if (!string.IsNullOrWhiteSpace(request.Url))
         {
             conditions.Add($"url LIKE {ClickHouseSql.QuoteLiteral($"%{request.Url.Trim()}%")}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ClientIp))
+        {
+            conditions.Add($"client_ip LIKE {ClickHouseSql.QuoteLiteral($"%{request.ClientIp.Trim()}%")}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.UserName))
+        {
+            conditions.Add($"user_name LIKE {ClickHouseSql.QuoteLiteral($"%{request.UserName.Trim()}%")}");
         }
 
         if (request.StatusCodeClass is not null)
@@ -213,7 +254,146 @@ public sealed class ClickHouseLogEventStore : ILogEventStore
             conditions.Add($"status_code >= {start} AND status_code < {start + 100}");
         }
 
+        if (request.MinTimeTaken is not null)
+        {
+            conditions.Add($"time_taken >= {Math.Max(0, request.MinTimeTaken.Value)}");
+        }
+
         return "WHERE " + string.Join(" AND ", conditions);
+    }
+
+    private async Task<IisAnalysisSummary> ReadIisSummaryAsync(
+        string where,
+        int slowThreshold,
+        CancellationToken cancellationToken)
+    {
+        var sql = $$"""
+            SELECT
+                count() AS total_requests,
+                countIf(status_code >= 200 AND status_code < 300) AS success_count,
+                countIf(status_code >= 300 AND status_code < 400) AS redirect_count,
+                countIf(status_code >= 400 AND status_code < 500) AS client_error_count,
+                countIf(status_code >= 500) AS server_error_count,
+                countIf(time_taken >= {{slowThreshold}}) AS slow_request_count,
+                toUInt32(quantileExact(0.95)(time_taken)) AS p95_time_taken,
+                max(time_taken) AS max_time_taken
+            FROM {{_table}}
+            {{where}}
+            FORMAT JSONEachRow
+            """;
+        var rows = await _client.QueryJsonEachRowAsync(sql, cancellationToken);
+        if (rows.Count == 0)
+        {
+            return IisAnalysisSummary.Empty;
+        }
+
+        var row = rows[0];
+        return new IisAnalysisSummary(
+            GetInt64(row, "total_requests"),
+            GetInt64(row, "success_count"),
+            GetInt64(row, "redirect_count"),
+            GetInt64(row, "client_error_count"),
+            GetInt64(row, "server_error_count"),
+            GetInt64(row, "slow_request_count"),
+            GetInt32(row, "p95_time_taken"),
+            GetInt32(row, "max_time_taken"));
+    }
+
+    private async Task<IReadOnlyList<IisEndpointAggregate>> ReadIisEndpointAggregatesAsync(
+        string where,
+        string extraCondition,
+        int topLimit,
+        bool sortByLatency,
+        CancellationToken cancellationToken)
+    {
+        var orderBy = sortByLatency
+            ? "p95_time_taken DESC, request_count DESC"
+            : "request_count DESC, max_time_taken DESC";
+        var sql = $$"""
+            SELECT
+                http_method AS method,
+                arrayElement(splitByChar('?', url), 1) AS endpoint_url,
+                intDiv(status_code, 100) AS status_code_class,
+                count() AS request_count,
+                countIf(status_code >= 400 AND status_code < 500) AS client_error_count,
+                countIf(status_code >= 500) AS server_error_count,
+                toUInt32(quantileExact(0.95)(time_taken)) AS p95_time_taken,
+                max(time_taken) AS max_time_taken
+            FROM {{_table}}
+            {{where}} AND {{extraCondition}}
+            GROUP BY method, endpoint_url, status_code_class
+            ORDER BY {{orderBy}}
+            LIMIT {{topLimit}}
+            FORMAT JSONEachRow
+            """;
+        var rows = await _client.QueryJsonEachRowAsync(sql, cancellationToken);
+        return rows.Select(static row => new IisEndpointAggregate(
+            GetString(row, "method"),
+            GetString(row, "endpoint_url"),
+            GetInt32(row, "status_code_class"),
+            GetInt64(row, "request_count"),
+            GetInt64(row, "client_error_count"),
+            GetInt64(row, "server_error_count"),
+            GetInt32(row, "p95_time_taken"),
+            GetInt32(row, "max_time_taken"))).ToArray();
+    }
+
+    private async Task<IReadOnlyList<IisSlowRequest>> ReadSlowRequestsAsync(
+        string where,
+        int slowThreshold,
+        int topLimit,
+        CancellationToken cancellationToken)
+    {
+        var sql = $$"""
+            SELECT
+                event_id,
+                timestamp_utc,
+                http_method AS method,
+                arrayElement(splitByChar('?', url), 1) AS endpoint_url,
+                status_code,
+                client_ip,
+                user_name,
+                time_taken,
+                toString(log_file_id) AS log_file_id
+            FROM {{_table}}
+            {{where}} AND time_taken >= {{slowThreshold}}
+            ORDER BY time_taken DESC, timestamp_utc
+            LIMIT {{topLimit}}
+            FORMAT JSONEachRow
+            """;
+        var rows = await _client.QueryJsonEachRowAsync(sql, cancellationToken);
+        return rows.Select(static row => new IisSlowRequest(
+            GetString(row, "event_id"),
+            ParseTimestamp(row.GetProperty("timestamp_utc")),
+            GetString(row, "method"),
+            GetString(row, "endpoint_url"),
+            GetInt32(row, "status_code"),
+            GetString(row, "client_ip"),
+            GetString(row, "user_name"),
+            GetInt32(row, "time_taken"),
+            GetString(row, "log_file_id").Replace("-", string.Empty, StringComparison.Ordinal))).ToArray();
+    }
+
+    private static LogEventSearchRequest ToSearchRequest(IisAnalysisRequest request)
+    {
+        return new LogEventSearchRequest
+        {
+            ProjectId = request.ProjectId,
+            FromUtc = request.FromUtc,
+            ToUtc = request.ToUtc,
+            AroundUtc = request.AroundUtc,
+            BeforeSeconds = request.BeforeSeconds,
+            AfterSeconds = request.AfterSeconds,
+            LogFileIds = request.LogFileIds,
+            OnlyHttp = true,
+            HttpMethod = request.HttpMethod,
+            Url = request.Url,
+            ClientIp = request.ClientIp,
+            UserName = request.UserName,
+            StatusCodeClass = request.StatusCodeClass,
+            MinTimeTaken = request.MinTimeTaken,
+            Limit = EventSearchDefaults.MaxLimit
+        };
     }
 
     private static LogEvent ReadEvent(JsonElement row)
@@ -240,6 +420,7 @@ public sealed class ClickHouseLogEventStore : ILogEventStore
             Url = GetString(row, "url"),
             StatusCode = GetInt32(row, "status_code"),
             ClientIp = GetString(row, "client_ip"),
+            UserName = GetString(row, "user_name"),
             ServerIp = GetString(row, "server_ip"),
             UserAgent = GetString(row, "user_agent"),
             TimeTaken = GetInt32(row, "time_taken")

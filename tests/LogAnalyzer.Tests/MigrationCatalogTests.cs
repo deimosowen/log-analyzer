@@ -28,9 +28,7 @@ public sealed class MigrationCatalogTests
     {
         var migrations = DatabaseMigrationCatalog.Load<SqliteEventMigration>();
 
-        var migration = Assert.Single(migrations);
-        Assert.Equal(1, migration.Version);
-        Assert.Equal("Create log event schema", migration.Name);
+        Assert.Equal([1, 2], migrations.Select(static migration => migration.Version));
     }
 
     [Fact]
@@ -38,8 +36,7 @@ public sealed class MigrationCatalogTests
     {
         var migrations = DatabaseMigrationCatalog.Load<ClickHouseEventMigration>();
 
-        var migration = Assert.Single(migrations);
-        Assert.Equal(1, migration.Version);
-        Assert.Contains("{event_table}", migration.Statements[0], StringComparison.Ordinal);
+        Assert.Equal([1, 2], migrations.Select(static migration => migration.Version));
+        Assert.Contains("{event_table}", migrations[0].Statements[0], StringComparison.Ordinal);
     }
 }

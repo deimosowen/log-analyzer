@@ -51,8 +51,8 @@ public sealed class ParserTests
     public async Task IisParserUsesFieldsOrder()
     {
         var text = """
-            #Fields: date time s-ip c-ip cs-method cs-uri-stem sc-status time-taken cs(User-Agent)
-            2026-04-21 05:45:29 10.0.0.1 10.0.0.2 GET /api/test 500 123 TestAgent
+            #Fields: date time s-ip c-ip cs-username cs-method cs-uri-stem sc-status time-taken cs(User-Agent)
+            2026-04-21 05:45:29 10.0.0.1 10.0.0.2 demo-user GET /api/test 500 123 TestAgent
             """;
 
         var events = await ParseAsync(new IisW3CParser(), text);
@@ -64,6 +64,7 @@ public sealed class ParserTests
         Assert.Equal("/api/test", events[0].Url);
         Assert.Equal(500, events[0].StatusCode);
         Assert.Equal("10.0.0.2", events[0].ClientIp);
+        Assert.Equal("demo-user", events[0].UserName);
     }
 
     private static async Task<List<LogEvent>> ParseAsync(ILogParser parser, string text)

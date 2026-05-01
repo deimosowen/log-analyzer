@@ -9,6 +9,9 @@ public static class EventSearchDefaults
     public const int DefaultAfterSeconds = 10;
     public const int CorrelationLimit = 1000;
     public const int RecentImportErrorsLimit = 500;
+    public const int DefaultHttpTopLimit = 8;
+    public const int HttpDrilldownLimit = 200;
+    public const int DefaultSlowRequestThresholdMs = 1000;
 
     public static readonly TimeSpan DefaultTimelineLookback = TimeSpan.FromHours(1);
     public static readonly TimeSpan DefaultTimelineBucket = TimeSpan.FromMinutes(1);

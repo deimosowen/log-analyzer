@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using LogAnalyzer.Application;
+using LogAnalyzer.Application.Analysis;
 using LogAnalyzer.Domain;
 using Microsoft.Data.Sqlite;
 
@@ -30,11 +31,11 @@ public sealed class SqliteLogEventStore : ILogEventStore
             INSERT OR REPLACE INTO log_events
                 (event_id, project_id, upload_session_id, log_file_id, timestamp_utc, timestamp_ms,
                  level, source, thread_id, line_number, end_line_number, byte_offset, message, exception, raw_text,
-                 http_method, url, status_code, client_ip, server_ip, user_agent, time_taken)
+                 http_method, url, status_code, client_ip, user_name, server_ip, user_agent, time_taken)
             VALUES
                 ($event_id, $project_id, $upload_session_id, $log_file_id, $timestamp_utc, $timestamp_ms,
                  $level, $source, $thread_id, $line_number, $end_line_number, $byte_offset, $message, $exception, $raw_text,
-                 $http_method, $url, $status_code, $client_ip, $server_ip, $user_agent, $time_taken);
+                 $http_method, $url, $status_code, $client_ip, $user_name, $server_ip, $user_agent, $time_taken);
             """;
 
         foreach (var logEvent in events)
@@ -176,6 +177,33 @@ public sealed class SqliteLogEventStore : ILogEventStore
         return result;
     }
 
+    public async Task<IisAnalysisResult> GetIisAnalysisAsync(IisAnalysisRequest request, CancellationToken cancellationToken)
+    {
+        var query = BuildWhere(ToSearchRequest(request));
+
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT *
+            FROM log_events
+            {query.WhereSql}
+            ORDER BY timestamp_ms, log_file_id, line_number;
+            """;
+        foreach (var parameter in query.Parameters)
+        {
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+        }
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var events = new List<LogEvent>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            events.Add(ReadEvent(reader));
+        }
+
+        return IisAnalysisBuilder.Build(events, request.SlowRequestThresholdMs, request.TopLimit);
+    }
+
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
     {
         return await _connectionFactory.OpenAsync(cancellationToken);
@@ -209,6 +237,16 @@ public sealed class SqliteLogEventStore : ILogEventStore
         AddInCondition("log_file_id", "$log_file_id", request.LogFileIds, conditions, parameters);
         AddInCondition("level", "$level", request.Levels.Select(LogLevels.Normalize).Where(static x => x.Length > 0).ToArray(), conditions, parameters);
 
+        if (request.OnlyHttp)
+        {
+            conditions.Add("http_method <> ''");
+        }
+
+        if (request.ExcludeSuccessfulHttp)
+        {
+            conditions.Add("(http_method = '' OR status_code < 200 OR status_code >= 400)");
+        }
+
         if (!string.IsNullOrWhiteSpace(request.Query))
         {
             conditions.Add("(message LIKE $query OR raw_text LIKE $query OR exception LIKE $query OR url LIKE $query)");
@@ -239,6 +277,18 @@ public sealed class SqliteLogEventStore : ILogEventStore
             parameters.Add(new SqlParameterValue("$url", $"%{request.Url.Trim()}%"));
         }
 
+        if (!string.IsNullOrWhiteSpace(request.ClientIp))
+        {
+            conditions.Add("client_ip LIKE $client_ip");
+            parameters.Add(new SqlParameterValue("$client_ip", $"%{request.ClientIp.Trim()}%"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.UserName))
+        {
+            conditions.Add("user_name LIKE $user_name");
+            parameters.Add(new SqlParameterValue("$user_name", $"%{request.UserName.Trim()}%"));
+        }
+
         if (request.StatusCodeClass is not null)
         {
             var start = request.StatusCodeClass.Value * 100;
@@ -247,7 +297,35 @@ public sealed class SqliteLogEventStore : ILogEventStore
             parameters.Add(new SqlParameterValue("$status_end", start + 100));
         }
 
+        if (request.MinTimeTaken is not null)
+        {
+            conditions.Add("time_taken >= $min_time_taken");
+            parameters.Add(new SqlParameterValue("$min_time_taken", Math.Max(0, request.MinTimeTaken.Value)));
+        }
+
         return new QueryParts("WHERE " + string.Join(" AND ", conditions), parameters);
+    }
+
+    private static LogEventSearchRequest ToSearchRequest(IisAnalysisRequest request)
+    {
+        return new LogEventSearchRequest
+        {
+            ProjectId = request.ProjectId,
+            FromUtc = request.FromUtc,
+            ToUtc = request.ToUtc,
+            AroundUtc = request.AroundUtc,
+            BeforeSeconds = request.BeforeSeconds,
+            AfterSeconds = request.AfterSeconds,
+            LogFileIds = request.LogFileIds,
+            OnlyHttp = true,
+            HttpMethod = request.HttpMethod,
+            Url = request.Url,
+            ClientIp = request.ClientIp,
+            UserName = request.UserName,
+            StatusCodeClass = request.StatusCodeClass,
+            MinTimeTaken = request.MinTimeTaken,
+            Limit = EventSearchDefaults.MaxLimit
+        };
     }
 
     private static void AddInCondition(
@@ -298,6 +376,7 @@ public sealed class SqliteLogEventStore : ILogEventStore
         command.Parameters.AddWithValue("$url", logEvent.Url);
         command.Parameters.AddWithValue("$status_code", logEvent.StatusCode);
         command.Parameters.AddWithValue("$client_ip", logEvent.ClientIp);
+        command.Parameters.AddWithValue("$user_name", logEvent.UserName);
         command.Parameters.AddWithValue("$server_ip", logEvent.ServerIp);
         command.Parameters.AddWithValue("$user_agent", logEvent.UserAgent);
         command.Parameters.AddWithValue("$time_taken", logEvent.TimeTaken);
@@ -326,6 +405,7 @@ public sealed class SqliteLogEventStore : ILogEventStore
             Url = reader.GetString(reader.GetOrdinal("url")),
             StatusCode = reader.GetInt32(reader.GetOrdinal("status_code")),
             ClientIp = reader.GetString(reader.GetOrdinal("client_ip")),
+            UserName = reader.GetString(reader.GetOrdinal("user_name")),
             ServerIp = reader.GetString(reader.GetOrdinal("server_ip")),
             UserAgent = reader.GetString(reader.GetOrdinal("user_agent")),
             TimeTaken = reader.GetInt32(reader.GetOrdinal("time_taken"))

@@ -9,4 +9,5 @@ public interface ILogEventStore
     Task<LogEvent?> GetEventAsync(string eventId, CancellationToken cancellationToken);
     Task<IReadOnlyDictionary<string, LogFileEventStats>> GetStatsByLogFileAsync(string projectId, CancellationToken cancellationToken);
     Task<IReadOnlyList<TimelinePoint>> GetTimelineAsync(TimelineRequest request, CancellationToken cancellationToken);
+    Task<IisAnalysisResult> GetIisAnalysisAsync(IisAnalysisRequest request, CancellationToken cancellationToken);
 }

@@ -1644,6 +1644,23 @@ label {
     color: #fff;
 }
 
+.inline-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2rem;
+    color: var(--ink-soft);
+    font-size: 0.72rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.inline-toggle input {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--brand);
+}
+
 .collapsed-step {
     display: flex;
     align-items: center;
@@ -1899,6 +1916,207 @@ label {
     font-weight: 800;
 }
 
+.http-analysis {
+    display: grid;
+    gap: 0.75rem;
+    min-height: 0;
+}
+
+.http-filter-bar {
+    display: grid;
+    grid-template-columns: 7rem 7rem minmax(12rem, 1fr) 9rem 10rem 8rem auto;
+    gap: 0.55rem;
+    align-items: end;
+    padding: 0.65rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(248, 251, 253, 0.78);
+}
+
+.http-filter-bar label {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.http-filter-bar span {
+    color: var(--muted);
+    font-size: 0.66rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.http-filter-bar .form-control {
+    min-height: 2rem;
+    padding: 0.28rem 0.55rem;
+    font-size: 0.78rem;
+}
+
+.http-filter-actions {
+    display: flex;
+    gap: 0.45rem;
+}
+
+.http-filter-actions .btn {
+    min-height: 2rem;
+    padding: 0 0.75rem;
+    font-size: 0.75rem;
+}
+
+.http-metrics {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.55rem;
+}
+
+.http-metrics article {
+    display: grid;
+    gap: 0.2rem;
+    min-height: 4.2rem;
+    padding: 0.7rem;
+    border: 1px solid rgba(116, 131, 153, 0.18);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.http-metrics span,
+.http-insight-card .eyebrow {
+    color: var(--muted);
+    font-size: 0.66rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.http-metrics strong {
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.http-insight-grid,
+.http-detail-grid {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.http-insight-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.http-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.http-insight-card {
+    display: grid;
+    align-content: start;
+    gap: 0.45rem;
+    min-width: 0;
+    max-height: 24rem;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.65rem;
+    background: #fff;
+}
+
+.http-insight-card header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.15rem;
+}
+
+.http-insight-card header strong {
+    overflow: hidden;
+    font-size: 0.86rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.http-aggregate-row,
+.http-request-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.2rem 0.55rem;
+    width: 100%;
+    min-height: 3.4rem;
+    border: 1px solid rgba(116, 131, 153, 0.14);
+    border-radius: 8px;
+    padding: 0.55rem;
+    background: rgba(248, 251, 253, 0.56);
+    color: var(--ink);
+    text-align: left;
+}
+
+.http-aggregate-row:hover,
+.http-request-row.interactive:hover {
+    border-color: rgba(15, 107, 143, 0.28);
+    background: var(--brand-soft);
+}
+
+.http-aggregate-row strong,
+.http-aggregate-row small,
+.http-request-row strong,
+.http-request-row small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.http-aggregate-row small,
+.http-request-row small {
+    grid-column: 2;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.http-request-row > span {
+    grid-row: span 2;
+    color: var(--muted);
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: 0.68rem;
+    font-weight: 800;
+}
+
+.status-pill {
+    display: inline-flex;
+    grid-row: span 2;
+    align-items: center;
+    justify-content: center;
+    min-width: 3.5rem;
+    height: 1.65rem;
+    border-radius: 999px;
+    padding: 0 0.45rem;
+    font-size: 0.68rem;
+    font-weight: 900;
+}
+
+.status-pill.server {
+    background: var(--red-soft);
+    color: var(--red);
+}
+
+.status-pill.client {
+    background: var(--amber-soft);
+    color: var(--amber);
+}
+
+.status-pill.slow {
+    background: var(--steel-soft);
+    color: var(--steel);
+}
+
+.http-card-empty {
+    min-height: 3.4rem;
+    border: 1px dashed var(--line-strong);
+    border-radius: 8px;
+    padding: 0.8rem;
+    color: var(--muted);
+    font-weight: 800;
+}
+
 .event-details {
     margin-top: 0.7rem;
     border: 1px solid var(--line);
@@ -2062,6 +2280,20 @@ pre {
         min-height: 26rem;
     }
 
+    .http-filter-bar,
+    .http-insight-grid,
+    .http-detail-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .http-filter-actions {
+        grid-column: 1 / -1;
+    }
+
+    .http-metrics {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .problem-header,
     .problem-row {
         grid-template-columns: 10.5rem 4.8rem minmax(12rem, 1fr);
@@ -2184,6 +2416,22 @@ pre {
     .problem-panel,
     .correlation-panel {
         padding: 0.75rem;
+    }
+
+    .http-filter-bar,
+    .http-insight-grid,
+    .http-detail-grid,
+    .http-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .http-filter-actions {
+        justify-content: stretch;
+    }
+
+    .http-filter-actions .btn,
+    .http-filter-actions .ghost-button {
+        flex: 1 1 0;
     }
 
     .incident-map-heading {

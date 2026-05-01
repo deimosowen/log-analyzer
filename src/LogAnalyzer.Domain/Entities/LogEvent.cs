@@ -21,6 +21,7 @@ public sealed record LogEvent
     public string Url { get; init; } = string.Empty;
     public int StatusCode { get; init; }
     public string ClientIp { get; init; } = string.Empty;
+    public string UserName { get; init; } = string.Empty;
     public string ServerIp { get; init; } = string.Empty;
     public string UserAgent { get; init; } = string.Empty;
     public int TimeTaken { get; init; }

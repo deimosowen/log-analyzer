@@ -54,6 +54,54 @@ public sealed class SqliteLogEventStoreTimelineTests
         }
     }
 
+    [Fact]
+    public async Task GetIisAnalysisAsyncAggregatesHttpNoise()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), $"log-analyzer-tests-{Guid.NewGuid():N}", "events.db");
+        try
+        {
+            var factory = new SqliteConnectionFactory(Options.Create(new SqliteOptions { DatabasePath = databasePath }));
+            var migrator = new SqliteEventStoreMigrator(factory);
+            await migrator.MigrateAsync(CancellationToken.None);
+
+            var store = new SqliteLogEventStore(factory);
+            var projectId = Guid.NewGuid().ToString("N");
+            var uploadId = Guid.NewGuid().ToString("N");
+            var logFileId = Guid.NewGuid().ToString("N");
+            var start = DateTimeOffset.Parse("2026-04-21T05:45:00Z");
+
+            await store.InsertBatchAsync(
+                [
+                    CreateHttpEvent(projectId, uploadId, logFileId, start.AddSeconds(1), "GET", "/api/orders?id=1", 500, 2400),
+                    CreateHttpEvent(projectId, uploadId, logFileId, start.AddSeconds(2), "GET", "/api/orders?id=2", 500, 1600),
+                    CreateHttpEvent(projectId, uploadId, logFileId, start.AddSeconds(3), "POST", "/api/login", 404, 80),
+                    CreateHttpEvent(projectId, uploadId, logFileId, start.AddSeconds(4), "GET", "/health", 200, 15)
+                ],
+                CancellationToken.None);
+
+            var analysis = await store.GetIisAnalysisAsync(new IisAnalysisRequest
+            {
+                ProjectId = projectId,
+                FromUtc = start,
+                ToUtc = start.AddSeconds(10),
+                SlowRequestThresholdMs = 1000
+            }, CancellationToken.None);
+
+            Assert.Equal(4, analysis.Summary.TotalRequests);
+            Assert.Equal(2, analysis.Summary.ServerErrorCount);
+            Assert.Equal(1, analysis.Summary.ClientErrorCount);
+            Assert.Equal(2, analysis.Summary.SlowRequestCount);
+            Assert.Equal("/api/orders", analysis.ServerErrorEndpoints[0].Url);
+            Assert.Equal(2, analysis.ServerErrorEndpoints[0].Count);
+            Assert.Equal("/api/login", analysis.ClientErrorEndpoints[0].Url);
+            Assert.Equal(2, analysis.SlowRequests.Count);
+        }
+        finally
+        {
+            DeleteDatabaseDirectory(databasePath);
+        }
+    }
+
     private static LogEvent CreateEvent(
         string projectId,
         string uploadId,
@@ -76,6 +124,40 @@ public sealed class SqliteLogEventStoreTimelineTests
             EndLineNumber = 1,
             Message = $"{level} message",
             RawText = $"{timestamp:O} {level} message"
+        };
+    }
+
+    private static LogEvent CreateHttpEvent(
+        string projectId,
+        string uploadId,
+        string logFileId,
+        DateTimeOffset timestamp,
+        string method,
+        string url,
+        int statusCode,
+        int timeTaken)
+    {
+        return new LogEvent
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            ProjectId = projectId,
+            UploadSessionId = uploadId,
+            LogFileId = logFileId,
+            TimestampUtc = timestamp,
+            TimestampMs = timestamp.ToUnixTimeMilliseconds(),
+            Level = statusCode >= 500 ? LogLevels.Error : statusCode >= 400 ? LogLevels.Warn : LogLevels.Info,
+            Source = "IIS",
+            ThreadId = string.Empty,
+            LineNumber = 1,
+            EndLineNumber = 1,
+            Message = $"{method} {url} {statusCode}",
+            RawText = $"{timestamp:O} {method} {url} {statusCode}",
+            HttpMethod = method,
+            Url = url,
+            StatusCode = statusCode,
+            ClientIp = "10.0.0.2",
+            UserName = "demo-user",
+            TimeTaken = timeTaken
         };
     }
 

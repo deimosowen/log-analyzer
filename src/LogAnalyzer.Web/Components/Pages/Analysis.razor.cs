@@ -20,7 +20,8 @@ public partial class Analysis : IAsyncDisposable
     private enum CorrelationDisplayMode
     {
         Summary,
-        Events
+        Events,
+        Http
     }
 
     [Parameter] public string ProjectId { get; set; } = string.Empty;
@@ -35,8 +36,10 @@ public partial class Analysis : IAsyncDisposable
     private HashSet<string> selectedLogIds = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> selectedLevels = new(StringComparer.OrdinalIgnoreCase);
     private List<LogEvent> correlatedEvents = [];
+    private List<LogEvent> httpDrilldownEvents = [];
     private IReadOnlyList<CorrelationGroup> correlationGroups = [];
     private IncidentTimeline incidentTimeline = IncidentTimeline.Empty;
+    private IisAnalysisResult iisAnalysis = IisAnalysisResult.Empty;
     private readonly string timelineChartElementId = $"incident-timeline-{Guid.NewGuid():N}";
     private DotNetObjectReference<Analysis>? timelineChartReference;
     private Virtualize<LogEvent>? problemVirtualize;
@@ -46,9 +49,16 @@ public partial class Analysis : IAsyncDisposable
     private string? query;
     private int beforeSeconds = EventSearchDefaults.DefaultBeforeSeconds;
     private int afterSeconds = EventSearchDefaults.DefaultAfterSeconds;
+    private string? httpMethodFilter;
+    private string? httpUrlFilter;
+    private string? httpClientIpFilter;
+    private string? httpUserNameFilter;
+    private string httpStatusClassFilter = string.Empty;
+    private int? httpMinTimeTaken;
     private bool showStep1 = true;
     private bool showStep2 = true;
     private bool showIncidentTimeline;
+    private bool hideSuccessfulHttp = true;
     private bool timelineChartDirty;
     private CorrelationDisplayMode correlationMode = CorrelationDisplayMode.Summary;
 
@@ -60,9 +70,12 @@ public partial class Analysis : IAsyncDisposable
         _ => "analysis-stage all-steps-hidden"
     };
 
-    private string CorrelationCountLabel => correlationMode == CorrelationDisplayMode.Summary
-        ? $"{correlationGroups.Count} групп / {LoadedCorrelationCountLabel}"
-        : LoadedCorrelationCountLabel;
+    private string CorrelationCountLabel => correlationMode switch
+    {
+        CorrelationDisplayMode.Summary => $"{correlationGroups.Count} групп / {LoadedCorrelationCountLabel}",
+        CorrelationDisplayMode.Http => $"{iisAnalysis.Summary.TotalRequests} HTTP-запросов",
+        _ => LoadedCorrelationCountLabel
+    };
 
     private string LoadedCorrelationCountLabel => IsCorrelationTruncated
         ? $"{correlatedEvents.Count} из {correlatedTotalCount} событий"
@@ -174,6 +187,7 @@ public partial class Analysis : IAsyncDisposable
             AfterSeconds = afterSeconds,
             LogFileIds = selectedLogIds.ToArray(),
             Levels = ProblemLevels,
+            ExcludeSuccessfulHttp = hideSuccessfulHttp,
             Offset = 0,
             Limit = EventSearchDefaults.CorrelationLimit
         };
@@ -201,6 +215,7 @@ public partial class Analysis : IAsyncDisposable
         correlatedTotalCount = result.TotalCount;
         correlationGroups = CorrelationGrouping.GroupProblemEvents(correlatedEvents);
         await RefreshIncidentTimeline();
+        await RefreshIisAnalysis();
     }
 
     private async Task RefreshIncidentTimeline()
@@ -250,9 +265,11 @@ public partial class Analysis : IAsyncDisposable
     private void ClearCorrelation()
     {
         correlatedEvents.Clear();
+        httpDrilldownEvents.Clear();
         correlationGroups = [];
         correlatedTotalCount = 0;
         incidentTimeline = IncidentTimeline.Empty;
+        iisAnalysis = IisAnalysisResult.Empty;
         timelineChartDirty = true;
     }
 
@@ -280,6 +297,84 @@ public partial class Analysis : IAsyncDisposable
     private void ShowCorrelationEvents()
     {
         correlationMode = CorrelationDisplayMode.Events;
+    }
+
+    private async Task ShowHttpAnalysis()
+    {
+        correlationMode = CorrelationDisplayMode.Http;
+        await RefreshIisAnalysis();
+    }
+
+    private async Task RefreshIisAnalysis()
+    {
+        if (selectedEvent is null)
+        {
+            iisAnalysis = IisAnalysisResult.Empty;
+            httpDrilldownEvents.Clear();
+            return;
+        }
+
+        iisAnalysis = await EventStore.GetIisAnalysisAsync(BuildIisAnalysisRequest(), CancellationToken.None);
+    }
+
+    private IisAnalysisRequest BuildIisAnalysisRequest()
+    {
+        return new IisAnalysisRequest
+        {
+            ProjectId = ProjectId,
+            AroundUtc = selectedEvent?.TimestampUtc,
+            BeforeSeconds = beforeSeconds,
+            AfterSeconds = afterSeconds,
+            LogFileIds = selectedLogIds.ToArray(),
+            HttpMethod = httpMethodFilter,
+            Url = httpUrlFilter,
+            ClientIp = httpClientIpFilter,
+            UserName = httpUserNameFilter,
+            StatusCodeClass = HttpStatusClassFilter(),
+            MinTimeTaken = httpMinTimeTaken,
+            SlowRequestThresholdMs = httpMinTimeTaken ?? EventSearchDefaults.DefaultSlowRequestThresholdMs,
+            TopLimit = EventSearchDefaults.DefaultHttpTopLimit
+        };
+    }
+
+    private async Task ApplyHttpFilters()
+    {
+        httpDrilldownEvents.Clear();
+        await RefreshIisAnalysis();
+    }
+
+    private async Task ResetHttpFilters()
+    {
+        httpMethodFilter = null;
+        httpUrlFilter = null;
+        httpClientIpFilter = null;
+        httpUserNameFilter = null;
+        httpStatusClassFilter = string.Empty;
+        httpMinTimeTaken = null;
+        await ApplyHttpFilters();
+    }
+
+    private async Task OpenHttpAggregate(IisEndpointAggregate aggregate)
+    {
+        var result = await EventStore.SearchAsync(new LogEventSearchRequest
+        {
+            ProjectId = ProjectId,
+            AroundUtc = selectedEvent?.TimestampUtc,
+            BeforeSeconds = beforeSeconds,
+            AfterSeconds = afterSeconds,
+            LogFileIds = selectedLogIds.ToArray(),
+            OnlyHttp = true,
+            HttpMethod = aggregate.Method,
+            Url = aggregate.Url,
+            StatusCodeClass = aggregate.StatusCodeClass,
+            ClientIp = httpClientIpFilter,
+            UserName = httpUserNameFilter,
+            MinTimeTaken = httpMinTimeTaken,
+            Offset = 0,
+            Limit = EventSearchDefaults.HttpDrilldownLimit
+        }, CancellationToken.None);
+
+        httpDrilldownEvents = result.Events.ToList();
     }
 
     private async Task FocusTimelineBucket(IncidentTimelineBucket bucket)
@@ -455,6 +550,28 @@ public partial class Analysis : IAsyncDisposable
     private static string DisplayLevel(string level)
     {
         return string.IsNullOrWhiteSpace(level) ? "RAW" : level;
+    }
+
+    private int? HttpStatusClassFilter()
+    {
+        return int.TryParse(httpStatusClassFilter, CultureInfo.InvariantCulture, out var statusClass)
+            ? statusClass
+            : null;
+    }
+
+    private static string FormatHttpStatusClass(int statusCodeClass)
+    {
+        return statusCodeClass > 0 ? $"{statusCodeClass}xx" : "HTTP";
+    }
+
+    private static string FormatMilliseconds(int value)
+    {
+        return value >= 1000 ? $"{value / 1000d:0.##} c" : $"{value} мс";
+    }
+
+    private static string FormatCount(long value)
+    {
+        return value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ", StringComparison.Ordinal);
     }
 
     private async Task SynchronizeTimelineChartAsync()

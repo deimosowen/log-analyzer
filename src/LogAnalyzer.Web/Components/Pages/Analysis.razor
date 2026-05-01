@@ -220,7 +220,12 @@ else
                             <div class="segmented-control" aria-label="Режим отображения">
                                 <button class="@(correlationMode == CorrelationDisplayMode.Summary ? "active" : "")" @onclick="ShowCorrelationSummary">Сводка</button>
                                 <button class="@(correlationMode == CorrelationDisplayMode.Events ? "active" : "")" @onclick="ShowCorrelationEvents">Строки</button>
+                                <button class="@(correlationMode == CorrelationDisplayMode.Http ? "active" : "")" @onclick="ShowHttpAnalysis">HTTP</button>
                             </div>
+                            <label class="inline-toggle" title="Скрывать успешные IIS-запросы из общей корреляции">
+                                <input type="checkbox" @bind="hideSuccessfulHttp" @bind:after="RefreshCorrelation" />
+                                без 2xx/3xx
+                            </label>
                             <button class="ghost-button" @onclick="ExportMarkdownReport">Отчет MD</button>
                         }
                         <button class="ghost-button" @onclick="ToggleStep2">Скрыть</button>
@@ -244,7 +249,168 @@ else
                         </div>
                     </div>
 
-                    @if (correlatedEvents.Count == 0)
+                    @if (correlationMode == CorrelationDisplayMode.Http)
+                    {
+                        <div class="http-analysis">
+                            <div class="http-filter-bar">
+                                <label>
+                                    <span>Статус</span>
+                                    <select class="form-control" @bind="httpStatusClassFilter">
+                                        <option value="">Все</option>
+                                        <option value="5">5xx</option>
+                                        <option value="4">4xx</option>
+                                        <option value="3">3xx</option>
+                                        <option value="2">2xx</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Метод</span>
+                                    <input class="form-control" @bind="httpMethodFilter" placeholder="GET" />
+                                </label>
+                                <label>
+                                    <span>URL</span>
+                                    <input class="form-control" @bind="httpUrlFilter" placeholder="/api/orders" />
+                                </label>
+                                <label>
+                                    <span>IP</span>
+                                    <input class="form-control" @bind="httpClientIpFilter" placeholder="10.0.0.1" />
+                                </label>
+                                <label>
+                                    <span>Пользователь</span>
+                                    <input class="form-control" @bind="httpUserNameFilter" placeholder="domain\\user" />
+                                </label>
+                                <label>
+                                    <span>Медленнее, мс</span>
+                                    <input type="number" class="form-control" @bind="httpMinTimeTaken" min="0" />
+                                </label>
+                                <div class="http-filter-actions">
+                                    <button class="btn btn-primary" @onclick="ApplyHttpFilters">Применить</button>
+                                    <button class="ghost-button" @onclick="ResetHttpFilters">Сброс</button>
+                                </div>
+                            </div>
+
+                            @if (iisAnalysis.Summary.TotalRequests == 0)
+                            {
+                                <div class="correlation-empty">В этом окне IIS-запросов не найдено.</div>
+                            }
+                            else
+                            {
+                                <div class="http-metrics">
+                                    <article>
+                                        <span>Запросов</span>
+                                        <strong>@FormatCount(iisAnalysis.Summary.TotalRequests)</strong>
+                                    </article>
+                                    <article>
+                                        <span>5xx</span>
+                                        <strong>@FormatCount(iisAnalysis.Summary.ServerErrorCount)</strong>
+                                    </article>
+                                    <article>
+                                        <span>4xx</span>
+                                        <strong>@FormatCount(iisAnalysis.Summary.ClientErrorCount)</strong>
+                                    </article>
+                                    <article>
+                                        <span>Медленных</span>
+                                        <strong>@FormatCount(iisAnalysis.Summary.SlowRequestCount)</strong>
+                                    </article>
+                                    <article>
+                                        <span>p95</span>
+                                        <strong>@FormatMilliseconds(iisAnalysis.Summary.P95TimeTaken)</strong>
+                                    </article>
+                                    <article>
+                                        <span>max</span>
+                                        <strong>@FormatMilliseconds(iisAnalysis.Summary.MaxTimeTaken)</strong>
+                                    </article>
+                                </div>
+
+                                <div class="http-insight-grid">
+                                    <section class="http-insight-card">
+                                        <header>
+                                            <span class="eyebrow">5xx</span>
+                                            <strong>Серверные ошибки</strong>
+                                        </header>
+                                        @foreach (var item in iisAnalysis.ServerErrorEndpoints)
+                                        {
+                                            <button class="http-aggregate-row" @onclick="() => OpenHttpAggregate(item)">
+                                                <span class="status-pill server">@FormatHttpStatusClass(item.StatusCodeClass)</span>
+                                                <strong>@item.Method @item.Url</strong>
+                                                <small>@FormatCount(item.Count) · p95 @FormatMilliseconds(item.P95TimeTaken) · max @FormatMilliseconds(item.MaxTimeTaken)</small>
+                                            </button>
+                                        }
+                                    </section>
+
+                                    <section class="http-insight-card">
+                                        <header>
+                                            <span class="eyebrow">4xx</span>
+                                            <strong>Клиентские ошибки</strong>
+                                        </header>
+                                        @foreach (var item in iisAnalysis.ClientErrorEndpoints)
+                                        {
+                                            <button class="http-aggregate-row" @onclick="() => OpenHttpAggregate(item)">
+                                                <span class="status-pill client">@FormatHttpStatusClass(item.StatusCodeClass)</span>
+                                                <strong>@item.Method @item.Url</strong>
+                                                <small>@FormatCount(item.Count) · p95 @FormatMilliseconds(item.P95TimeTaken) · max @FormatMilliseconds(item.MaxTimeTaken)</small>
+                                            </button>
+                                        }
+                                    </section>
+
+                                    <section class="http-insight-card">
+                                        <header>
+                                            <span class="eyebrow">Latency</span>
+                                            <strong>Медленные endpoint'ы</strong>
+                                        </header>
+                                        @foreach (var item in iisAnalysis.SlowEndpoints)
+                                        {
+                                            <button class="http-aggregate-row" @onclick="() => OpenHttpAggregate(item)">
+                                                <span class="status-pill slow">@FormatMilliseconds(item.P95TimeTaken)</span>
+                                                <strong>@item.Method @item.Url</strong>
+                                                <small>@FormatCount(item.Count) · @FormatHttpStatusClass(item.StatusCodeClass) · max @FormatMilliseconds(item.MaxTimeTaken)</small>
+                                            </button>
+                                        }
+                                    </section>
+                                </div>
+
+                                <div class="http-detail-grid">
+                                    <section class="http-insight-card">
+                                        <header>
+                                            <span class="eyebrow">Requests</span>
+                                            <strong>Самые медленные запросы</strong>
+                                        </header>
+                                        @foreach (var item in iisAnalysis.SlowRequests)
+                                        {
+                                            <div class="http-request-row">
+                                                <span>@FormatTime(item.TimestampUtc)</span>
+                                                <strong>@item.Method @item.Url</strong>
+                                                <small>@item.StatusCode · @FormatMilliseconds(item.TimeTaken) · @item.ClientIp · @LogName(item.LogFileId)</small>
+                                            </div>
+                                        }
+                                    </section>
+
+                                    <section class="http-insight-card">
+                                        <header>
+                                            <span class="eyebrow">Drill-down</span>
+                                            <strong>Запросы выбранной группы</strong>
+                                        </header>
+                                        @if (httpDrilldownEvents.Count == 0)
+                                        {
+                                            <div class="http-card-empty">Выберите строку в агрегатах.</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var item in httpDrilldownEvents)
+                                            {
+                                                <button class="http-request-row interactive" @onclick="() => SelectProblem(item)">
+                                                    <span>@FormatTime(item.TimestampUtc)</span>
+                                                    <strong>@item.HttpMethod @item.Url</strong>
+                                                    <small>@item.StatusCode · @FormatMilliseconds(item.TimeTaken) · @item.ClientIp · @LogName(item.LogFileId)</small>
+                                                </button>
+                                            }
+                                        }
+                                    </section>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (correlatedEvents.Count == 0)
                     {
                         <div class="correlation-empty">В этом окне времени проблем не найдено.</div>
                     }

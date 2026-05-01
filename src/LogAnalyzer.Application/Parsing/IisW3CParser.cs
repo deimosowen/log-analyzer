@@ -113,6 +113,7 @@ public sealed class IisW3CParser : ILogParser
                 Url = url,
                 StatusCode = statusCode,
                 ClientIp = Get(map, "c-ip"),
+                UserName = Get(map, "cs-username"),
                 ServerIp = Get(map, "s-ip"),
                 UserAgent = Get(map, "cs(User-Agent)"),
                 TimeTaken = timeTaken
