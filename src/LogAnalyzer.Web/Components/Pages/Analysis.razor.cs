@@ -83,6 +83,32 @@ public partial class Analysis : IAsyncDisposable
 
     private bool IsCorrelationTruncated => correlatedTotalCount > correlatedEvents.Count;
 
+    private string ReportEditorUrl
+    {
+        get
+        {
+            if (selectedEvent is null)
+            {
+                return string.Empty;
+            }
+
+            var selectedLogs = selectedLogIds.Count == logs.Count
+                ? null
+                : string.Join(",", selectedLogIds);
+
+            return Navigation.GetUriWithQueryParameters($"/projects/{ProjectId}/report", new Dictionary<string, object?>
+            {
+                ["eventId"] = selectedEvent.Id,
+                ["before"] = beforeSeconds,
+                ["after"] = afterSeconds,
+                ["tz"] = displayTimeZoneId,
+                ["query"] = query,
+                ["logs"] = selectedLogs,
+                ["hideSuccessfulHttp"] = hideSuccessfulHttp
+            });
+        }
+    }
+
     private string SelectedLogPreview
     {
         get
@@ -412,36 +438,6 @@ public partial class Analysis : IAsyncDisposable
 
         await FocusTimelineBucket(bucket);
         await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task ExportMarkdownReport()
-    {
-        if (project is null || selectedEvent is null)
-        {
-            return;
-        }
-
-        var report = IncidentMarkdownReportBuilder.Build(new IncidentMarkdownReportRequest(
-            project.Name,
-            displayTimeZoneId,
-            SelectedLogPreview,
-            query,
-            beforeSeconds,
-            afterSeconds,
-            selectedEvent,
-            correlatedEvents,
-            correlationGroups,
-            correlatedTotalCount,
-            FormatTime,
-            FormatDelta,
-            FormatGroupWindow,
-            LogName));
-
-        await JsRuntime.InvokeVoidAsync(
-            "logAnalyzerDownloads.downloadText",
-            report.FileName,
-            "text/markdown;charset=utf-8",
-            report.Content);
     }
 
     private void BackToProject()

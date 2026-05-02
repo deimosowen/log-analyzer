@@ -6,4 +6,9 @@
     <ProjectReference Include="..\LogAnalyzer.Infrastructure\LogAnalyzer.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Markdig" Version="1.1.3" />
+    <PackageReference Include="QuestPDF.Markdown" Version="1.49.1" />
+  </ItemGroup>
+
 </Project>

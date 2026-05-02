@@ -9,6 +9,7 @@ public static class ApiEndpoints
         api.MapProjectEndpoints();
         api.MapUploadEndpoints();
         api.MapEventEndpoints();
+        api.MapReportEndpoints();
 
         return app;
     }

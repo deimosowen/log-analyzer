@@ -16,4 +16,5 @@ public static class ApiRoutes
     public const string ProjectEventsAround = "/projects/{projectId}/events/around";
     public const string ProjectEventsSearch = "/projects/{projectId}/events/search";
     public const string ProjectTimeline = "/projects/{projectId}/timeline";
+    public const string ProjectReportPdf = "/projects/{projectId}/reports/pdf";
 }

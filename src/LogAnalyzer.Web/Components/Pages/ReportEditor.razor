@@ -1,0 +1,392 @@
+@page "/projects/{ProjectId}/report"
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@inject IMetadataRepository Metadata
+@inject ILogEventStore EventStore
+@inject ICurrentUserService CurrentUserService
+@inject IJSRuntime JsRuntime
+@inject NavigationManager Navigation
+@using System.Globalization
+@using LogAnalyzer.Application.Analysis
+@using LogAnalyzer.Application.Reporting
+@using LogAnalyzer.Application.Time
+@using Markdig
+
+<PageTitle>Отчет инцидента</PageTitle>
+
+@if (isLoading)
+{
+    <section class="empty-state">
+        <h1>Готовим отчет</h1>
+    </section>
+}
+else if (!string.IsNullOrWhiteSpace(loadError))
+{
+    <section class="empty-state">
+        <h1>Отчет недоступен</h1>
+        <p>@loadError</p>
+        <button class="btn btn-primary" @onclick="BackToAnalysis">К анализу</button>
+    </section>
+}
+else
+{
+    <section class="report-page">
+        <header class="report-header">
+            <div>
+                <span class="eyebrow">Отчет инцидента</span>
+                <h1>@project!.Name</h1>
+                <p>@ReportContextLabel</p>
+            </div>
+            <div class="report-actions">
+                <button class="btn btn-primary" @onclick="DownloadMarkdown">Скачать MD</button>
+                <button class="btn btn-outline-secondary" @onclick="DownloadPdf" disabled="@isPdfDownloading">
+                    @(isPdfDownloading ? "Готовим PDF" : "Скачать PDF")
+                </button>
+                <button class="btn btn-outline-secondary" @onclick="BackToAnalysis">К анализу</button>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(pdfError))
+            {
+                <div class="report-export-error">@pdfError</div>
+            }
+        </header>
+
+        <div class="report-workbench">
+            <section class="report-editor-panel">
+                <header>
+                    <div>
+                        <span class="eyebrow">Редактор</span>
+                        <strong>Текст отчета</strong>
+                    </div>
+                    <button class="ghost-button" @onclick="ResetMarkdown">Вернуть шаблон</button>
+                </header>
+                <textarea class="report-editor"
+                          @ref="markdownEditor"
+                          value="@markdown"
+                          spellcheck="false"
+                          aria-label="Markdown редактор отчета"></textarea>
+            </section>
+
+            <section class="report-preview-panel">
+                <header class="report-preview-toolbar">
+                    <div>
+                        <span class="eyebrow">Предпросмотр</span>
+                        <strong>Готовый отчет</strong>
+                    </div>
+                    <span>@FormatCharacterCount(markdown.Length)</span>
+                </header>
+                <article class="report-preview-content">
+                    @((MarkupString)previewHtml)
+                </article>
+            </section>
+        </div>
+    </section>
+}
+
+@code {
+    private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .DisableHtml()
+        .Build();
+
+    [Parameter] public string ProjectId { get; set; } = string.Empty;
+    [SupplyParameterFromQuery(Name = "eventId")] public string? EventId { get; set; }
+    [SupplyParameterFromQuery(Name = "before")] public int BeforeSeconds { get; set; } = EventSearchDefaults.DefaultBeforeSeconds;
+    [SupplyParameterFromQuery(Name = "after")] public int AfterSeconds { get; set; } = EventSearchDefaults.DefaultAfterSeconds;
+    [SupplyParameterFromQuery(Name = "tz")] public string? DisplayTimeZoneId { get; set; }
+    [SupplyParameterFromQuery(Name = "query")] public string? Query { get; set; }
+    [SupplyParameterFromQuery(Name = "logs")] public string? Logs { get; set; }
+    [SupplyParameterFromQuery(Name = "hideSuccessfulHttp")] public bool HideSuccessfulHttp { get; set; } = true;
+
+    private ProjectEntity? project;
+    private LogEvent? selectedEvent;
+    private List<LogFileEntity> logs = [];
+    private Dictionary<string, string> logNames = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> selectedLogIds = new(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyList<LogEvent> correlatedEvents = [];
+    private IReadOnlyList<CorrelationGroup> correlationGroups = [];
+    private long correlatedTotalCount;
+    private string displayTimeZoneId = TimeZoneDefaults.Display;
+    private string markdown = string.Empty;
+    private string originalMarkdown = string.Empty;
+    private string previewHtml = string.Empty;
+    private string fileName = "incident-report.md";
+    private string? loadError;
+    private string? pdfError;
+    private ElementReference markdownEditor;
+    private DotNetObjectReference<ReportEditor>? editorReference;
+    private bool isLoading = true;
+    private bool editorInitialized;
+    private bool isPdfDownloading;
+
+    private string ReportPdfUrl => $"/api/projects/{Uri.EscapeDataString(ProjectId)}/reports/pdf";
+
+    private string ReportContextLabel => selectedEvent is null
+        ? "Событие не выбрано"
+        : $"{FormatTime(selectedEvent.TimestampUtc)} · {LogName(selectedEvent.LogFileId)} · {BeforeSeconds} сек до / {AfterSeconds} сек после";
+
+    protected override async Task OnInitializedAsync()
+    {
+        displayTimeZoneId = string.IsNullOrWhiteSpace(DisplayTimeZoneId)
+            ? TimeZoneDefaults.Display
+            : DisplayTimeZoneId;
+
+        var currentUser = await CurrentUserService.GetAsync(CancellationToken.None);
+        project = await Metadata.GetProjectAsync(currentUser.Id, ProjectId, CancellationToken.None);
+        if (project is null)
+        {
+            loadError = "Проект не найден или недоступен текущему пользователю.";
+            isLoading = false;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(EventId))
+        {
+            loadError = "Не передан идентификатор выбранного события.";
+            isLoading = false;
+            return;
+        }
+
+        selectedEvent = await EventStore.GetEventAsync(EventId, CancellationToken.None);
+        if (selectedEvent is null || !string.Equals(selectedEvent.ProjectId, ProjectId, StringComparison.OrdinalIgnoreCase))
+        {
+            loadError = "Выбранное событие не найдено.";
+            isLoading = false;
+            return;
+        }
+
+        logs = (await Metadata.ListLogFilesAsync(ProjectId, CancellationToken.None)).ToList();
+        logNames = logs.ToDictionary(log => log.Id, LogFileDisplayName.Format, StringComparer.OrdinalIgnoreCase);
+        selectedLogIds = ParseSelectedLogs();
+
+        await BuildReportAsync();
+        isLoading = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (editorInitialized || isLoading || !string.IsNullOrWhiteSpace(loadError))
+        {
+            return;
+        }
+
+        editorReference = DotNetObjectReference.Create(this);
+        editorInitialized = await JsRuntime.InvokeAsync<bool>(
+            "logAnalyzerMarkdownEditor.initialize",
+            markdownEditor,
+            editorReference,
+            markdown);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        editorReference?.Dispose();
+
+        try
+        {
+            await JsRuntime.InvokeVoidAsync("logAnalyzerMarkdownEditor.dispose", markdownEditor);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    private async Task BuildReportAsync()
+    {
+        var result = await EventStore.SearchAsync(BuildCorrelationSearchRequest(), CancellationToken.None);
+        correlatedEvents = result.Events;
+        correlatedTotalCount = result.TotalCount;
+        correlationGroups = CorrelationGrouping.GroupProblemEvents(correlatedEvents);
+
+        var report = IncidentMarkdownReportBuilder.Build(new IncidentMarkdownReportRequest(
+            project!.Name,
+            displayTimeZoneId,
+            SelectedLogPreview(),
+            Query,
+            BeforeSeconds,
+            AfterSeconds,
+            selectedEvent!,
+            correlatedEvents,
+            correlationGroups,
+            correlatedTotalCount,
+            FormatTime,
+            FormatDelta,
+            FormatGroupWindow,
+            LogName));
+
+        fileName = report.FileName;
+        originalMarkdown = report.Content;
+        markdown = report.Content;
+        RenderPreview();
+    }
+
+    private LogEventSearchRequest BuildCorrelationSearchRequest()
+    {
+        return new LogEventSearchRequest
+        {
+            ProjectId = ProjectId,
+            AroundUtc = selectedEvent?.TimestampUtc,
+            BeforeSeconds = Math.Max(0, BeforeSeconds),
+            AfterSeconds = Math.Max(0, AfterSeconds),
+            LogFileIds = selectedLogIds.ToArray(),
+            Levels = ProblemEventLevels.Default,
+            ExcludeSuccessfulHttp = HideSuccessfulHttp,
+            Offset = 0,
+            Limit = EventSearchDefaults.CorrelationLimit
+        };
+    }
+
+    private HashSet<string> ParseSelectedLogs()
+    {
+        if (string.IsNullOrWhiteSpace(Logs))
+        {
+            return logs.Select(log => log.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var knownIds = logs.Select(log => log.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var parsed = Logs
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(knownIds.Contains)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return parsed.Count == 0 ? knownIds : parsed;
+    }
+
+    [JSInvokable]
+    public async Task UpdateMarkdownFromEditor(string value)
+    {
+        markdown = value ?? string.Empty;
+        RenderPreview();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ResetMarkdown()
+    {
+        markdown = originalMarkdown;
+        RenderPreview();
+        if (editorInitialized)
+        {
+            await JsRuntime.InvokeVoidAsync("logAnalyzerMarkdownEditor.setValue", markdownEditor, markdown);
+        }
+    }
+
+    private async Task DownloadMarkdown()
+    {
+        await JsRuntime.InvokeVoidAsync(
+            "logAnalyzerDownloads.downloadText",
+            fileName,
+            "text/markdown;charset=utf-8",
+            markdown);
+    }
+
+    private async Task DownloadPdf()
+    {
+        try
+        {
+            isPdfDownloading = true;
+            pdfError = null;
+            var pdfName = Path.ChangeExtension(fileName, ".pdf");
+            await JsRuntime.InvokeVoidAsync("logAnalyzerReports.downloadPdf", ReportPdfUrl, pdfName, markdown);
+        }
+        catch (JSException exception)
+        {
+            pdfError = $"Не удалось сформировать PDF: {exception.Message}";
+        }
+        finally
+        {
+            isPdfDownloading = false;
+        }
+    }
+
+    private void RenderPreview()
+    {
+        previewHtml = Markdown.ToHtml(markdown, MarkdownPipeline);
+    }
+
+    private void BackToAnalysis()
+    {
+        Navigation.NavigateTo($"/projects/{ProjectId}/analysis");
+    }
+
+    private string SelectedLogPreview()
+    {
+        if (selectedLogIds.Count == 0)
+        {
+            return "логи не выбраны";
+        }
+
+        if (logs.Count > 0 && selectedLogIds.Count == logs.Count)
+        {
+            return "все логи";
+        }
+
+        var names = logs
+            .Where(log => selectedLogIds.Contains(log.Id))
+            .Select(LogFileDisplayName.Format)
+            .Take(3)
+            .ToArray();
+
+        var suffix = selectedLogIds.Count > names.Length
+            ? $" +{selectedLogIds.Count - names.Length}"
+            : string.Empty;
+
+        return string.Join(", ", names) + suffix;
+    }
+
+    private string FormatTime(DateTimeOffset timestampUtc)
+    {
+        try
+        {
+            var zone = TimeZoneHelper.Find(displayTimeZoneId);
+            return TimeZoneInfo.ConvertTime(timestampUtc, zone).ToString("yyyy-MM-dd HH:mm:ss.ffff", CultureInfo.InvariantCulture);
+        }
+        catch
+        {
+            return timestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.ffff", CultureInfo.InvariantCulture);
+        }
+    }
+
+    private string FormatDelta(LogEvent item)
+    {
+        if (selectedEvent is null)
+        {
+            return string.Empty;
+        }
+
+        return FormatSignedSeconds(item.TimestampUtc - selectedEvent.TimestampUtc);
+    }
+
+    private string LogName(string id)
+    {
+        return logNames.TryGetValue(id, out var name) ? name : id;
+    }
+
+    private string FormatGroupWindow(CorrelationGroup group)
+    {
+        if (selectedEvent is null)
+        {
+            return string.Empty;
+        }
+
+        if (group.Count == 1)
+        {
+            return FormatDelta(group.Representative);
+        }
+
+        return $"{FormatSignedSeconds(group.FirstTimestamp - selectedEvent.TimestampUtc)}..{FormatSignedSeconds(group.LastTimestamp - selectedEvent.TimestampUtc)}";
+    }
+
+    private static string FormatSignedSeconds(TimeSpan delta)
+    {
+        return delta.TotalMilliseconds switch
+        {
+            > 0 => $"+{delta.TotalSeconds:0.###}s",
+            < 0 => $"{delta.TotalSeconds:0.###}s",
+            _ => "0s"
+        };
+    }
+
+    private static string FormatCharacterCount(int value)
+    {
+        return value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ", StringComparison.Ordinal) + " символов";
+    }
+}

@@ -6,6 +6,7 @@ using LogAnalyzer.Infrastructure.Storage;
 using LogAnalyzer.Web.Api;
 using LogAnalyzer.Web.Auth;
 using LogAnalyzer.Web.Components;
+using LogAnalyzer.Web.Reporting;
 using LogAnalyzer.Web.Services;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -36,6 +37,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<UserDashboardService>();
+builder.Services.AddSingleton<IReportPdfRenderer, QuestPdfMarkdownReportRenderer>();
 builder.Services.AddLogAnalyzerAuthentication(builder.Configuration);
 builder.Services.AddLogAnalyzerInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<ImportCancellationRegistry>();

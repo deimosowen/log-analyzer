@@ -226,7 +226,7 @@ else
                                 <input type="checkbox" @bind="hideSuccessfulHttp" @bind:after="RefreshCorrelation" />
                                 без 2xx/3xx
                             </label>
-                            <button class="ghost-button" @onclick="ExportMarkdownReport">Отчет MD</button>
+                            <a class="ghost-button" href="@ReportEditorUrl" target="_blank" rel="noopener">Отчет</a>
                         }
                         <button class="ghost-button" @onclick="ToggleStep2">Скрыть</button>
                     </div>
