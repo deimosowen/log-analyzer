@@ -120,3 +120,63 @@ window.logAnalyzerMarkdownEditor = {
         }
     }
 };
+
+window.logAnalyzerGridResize = {
+    startColumnDrag(dotNetRef, tableKind, startClientX, columnIndex, startWidths, minPx, maxPx) {
+        if (!dotNetRef || !tableKind || !Array.isArray(startWidths)) {
+            return;
+        }
+
+        const startWidth = startWidths[columnIndex] ?? minPx;
+
+        const onMove = (ev) => {
+            const delta = ev.clientX - startClientX;
+            const clampedMin = typeof minPx === "number" ? minPx : 48;
+            const clampedMax = typeof maxPx === "number" ? maxPx : 720;
+            const next = Math.max(clampedMin, Math.min(clampedMax, Math.round(startWidth + delta)));
+            dotNetRef.invokeMethodAsync("SetAnalysisColumnWidths", tableKind, columnIndex, next).catch(() => {});
+        };
+
+        const onUp = () => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+        };
+
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp, { once: true });
+    }
+};
+
+window.logAnalyzerStageSplit = {
+    begin(dotNetRef, panelSelector, startClientY, minPx, maxPx) {
+        if (!dotNetRef || !panelSelector) {
+            return;
+        }
+
+        const panel = document.querySelector(panelSelector);
+        if (!panel) {
+            return;
+        }
+
+        const clampedMin = typeof minPx === "number" ? minPx : 160;
+        const clampedMax = typeof maxPx === "number"
+            ? maxPx
+            : Math.max(clampedMin + 280, Math.min(window.innerHeight * 0.88, clampedMin + 1200));
+
+        const startHeight = panel.getBoundingClientRect().height;
+
+        const onMove = (ev) => {
+            const delta = ev.clientY - startClientY;
+            const next = Math.max(clampedMin, Math.min(clampedMax, Math.round(startHeight + delta)));
+            dotNetRef.invokeMethodAsync("SetAnalysisStep1Height", next).catch(() => {});
+        };
+
+        const onUp = () => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+        };
+
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp, { once: true });
+    }
+};

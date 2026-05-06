@@ -27,11 +27,6 @@ else
             </div>
 
             <div class="analysis-controls" aria-label="Фильтры анализа">
-                <label class="compact-field search-field">
-                    <span>Поиск</span>
-                    <input class="form-control" @bind="query" @bind:event="oninput" placeholder="сообщение, URL, exception" />
-                </label>
-
                 <div class="window-control" aria-label="Окно корреляции">
                     <span>Окно</span>
                     <label title="Секунд до выбранного события">
@@ -149,7 +144,7 @@ else
         <main class="@StageClass">
             @if (showStep1)
             {
-            <section class="problem-panel">
+            <section class="problem-panel" id="analysis-step1-panel" style="@Step1HeightStyle">
                 <div class="panel-heading problem-heading">
                     <div>
                         <span class="eyebrow">Шаг 1</span>
@@ -169,16 +164,38 @@ else
                     </div>
                 </div>
 
+                <div class="problem-filter-bar problem-filter-bar--compact">
+                    <label class="problem-filter-grow">
+                        <span>Текст</span>
+                        <input class="form-control" @bind="query" @bind:event="oninput" placeholder="сообщение, URL, exception, сырой текст…" />
+                    </label>
+                    <label class="problem-filter-log">
+                        <span>Лог</span>
+                        <select class="form-control" @bind="problemLogFocusId">
+                            <option value="">Все выбранные сверху</option>
+                            @foreach (var log in logs.Where(log => selectedLogIds.Contains(log.Id)))
+                            {
+                                <option value="@log.Id">@LogDisplayName(log)</option>
+                            }
+                        </select>
+                    </label>
+                    <div class="problem-filter-actions">
+                        <button class="btn btn-primary" type="button" @onclick="Refresh">Обновить список</button>
+                    </div>
+                </div>
+
+                <p class="grid-interaction-hint">Границы между заголовками столбцов можно перетаскивать, чтобы изменить ширину.</p>
+
                 <div class="problem-table">
-                    <div class="problem-header">
-                        <span>время</span>
-                        <span>уровень</span>
-                        <span>лог</span>
-                        <span>сообщение</span>
+                    <div class="problem-header" style="@ProblemGridColumnsStyle">
+                        <span class="grid-head-cell">время<span class="grid-col-resize" title="Изменить ширину столбца" tabindex="-1" @onmousedown="@(e => BeginColumnResizeAsync(e, "problem", 0))"></span></span>
+                        <span class="grid-head-cell">уровень<span class="grid-col-resize" title="Изменить ширину столбца" tabindex="-1" @onmousedown="@(e => BeginColumnResizeAsync(e, "problem", 1))"></span></span>
+                        <span class="grid-head-cell">лог<span class="grid-col-resize" title="Изменить ширину столбца" tabindex="-1" @onmousedown="@(e => BeginColumnResizeAsync(e, "problem", 2))"></span></span>
+                        <span class="grid-head-cell grid-head-last">сообщение</span>
                     </div>
                     <Virtualize @ref="problemVirtualize" Context="item" ItemsProvider="LoadProblems" ItemSize="48">
                         <ItemContent>
-                            <button class="problem-row @(selectedEvent?.Id == item.Id ? "selected" : "")" @onclick="() => SelectProblem(item)">
+                            <button type="button" class="problem-row @(selectedEvent?.Id == item.Id ? "selected" : "")" style="@ProblemGridColumnsStyle" @onclick="() => SelectProblem(item)">
                                 <span>@FormatTime(item.TimestampUtc)</span>
                                 <span class="level-pill @item.Level">@DisplayLevel(item.Level)</span>
                                 <span>@LogName(item.LogFileId)</span>
@@ -203,6 +220,13 @@ else
                 </div>
                 <button class="ghost-button" @onclick="ToggleStep1">Показать</button>
             </section>
+            }
+
+            @if (showStep1 && showStep2)
+            {
+                <div class="analysis-stage-splitter" title="Потяните, чтобы изменить высоту списка проблем (шаг 1) и блока корреляции (шаг 2)" @onmousedown="BeginStageResizeAsync" @onmousedown:preventDefault="true">
+                    <span class="analysis-stage-splitter-grip" aria-hidden="true"><i></i><i></i><i></i></span>
+                </div>
             }
 
             @if (showStep2)
@@ -423,16 +447,16 @@ else
                             </div>
                         }
                         <div class="correlation-table summary-table">
-                            <div class="correlation-header summary-header">
-                                <span>кол-во</span>
-                                <span>окно</span>
-                                <span>уровень</span>
-                                <span>логов</span>
-                                <span>группа</span>
+                            <div class="correlation-header summary-header" style="@SummaryGridColumnsStyle">
+                                <span class="grid-head-cell">кол-во<span class="grid-col-resize" title="Изменить ширину столбца" tabindex="-1" @onmousedown="@(e => BeginColumnResizeAsync(e, "summary", 0))"></span></span>
+                                <span class="grid-head-cell">окно<span class="grid-col-resize" title="Изменить ширину столбца" tabindex="-1" @onmousedown="@(e => BeginColumnResizeAsync(e, "summary", 1))"></span></span>
+                                <span class="grid-head-cell">уровень<span class="grid-col-resize" title="Изменить ширину столбца" tabindex="-1" @onmousedown="@(e => BeginColumnResizeAsync(e, "summary", 2))"></span></span>
+                                <span class="grid-head-cell">логов<span class="grid-col-resize" title="Изменить ширину столбца" tabindex="-1" @onmousedown="@(e => BeginColumnResizeAsync(e, "summary", 3))"></span></span>
+                                <span class="grid-head-cell grid-head-last">группа</span>
                             </div>
                             @foreach (var group in correlationGroups)
                             {
-                                <button class="correlation-line summary-line @(selectedEvent.Id == group.Representative.Id ? "active" : "")" @onclick="() => SelectProblem(group.Representative)">
+                                <button type="button" class="correlation-line summary-line @(selectedEvent.Id == group.Representative.Id ? "active" : "")" style="@SummaryGridColumnsStyle" @onclick="() => SelectProblem(group.Representative)">
                                     <span class="count-pill">@group.Count</span>
                                     <span>@FormatGroupWindow(group)</span>
                                     <span class="level-pill @group.Level">@DisplayLevel(group.Level)</span>
@@ -451,16 +475,16 @@ else
                             </div>
                         }
                         <div class="correlation-table">
-                            <div class="correlation-header">
-                                <span>дельта</span>
-                                <span>время</span>
-                                <span>уровень</span>
-                                <span>лог</span>
-                                <span>сообщение</span>
+                            <div class="correlation-header" style="@CorrelationGridColumnsStyle">
+                                <span class="grid-head-cell">дельта<span class="grid-col-resize" title="Изменить ширину столбца" tabindex="-1" @onmousedown="@(e => BeginColumnResizeAsync(e, "correlation", 0))"></span></span>
+                                <span class="grid-head-cell">время<span class="grid-col-resize" title="Изменить ширину столбца" tabindex="-1" @onmousedown="@(e => BeginColumnResizeAsync(e, "correlation", 1))"></span></span>
+                                <span class="grid-head-cell">уровень<span class="grid-col-resize" title="Изменить ширину столбца" tabindex="-1" @onmousedown="@(e => BeginColumnResizeAsync(e, "correlation", 2))"></span></span>
+                                <span class="grid-head-cell">лог<span class="grid-col-resize" title="Изменить ширину столбца" tabindex="-1" @onmousedown="@(e => BeginColumnResizeAsync(e, "correlation", 3))"></span></span>
+                                <span class="grid-head-cell grid-head-last">сообщение</span>
                             </div>
                             @foreach (var item in correlatedEvents)
                             {
-                                <button class="correlation-line @(selectedEvent.Id == item.Id ? "active" : "")" @onclick="() => SelectProblem(item)">
+                                <button type="button" class="correlation-line @(selectedEvent.Id == item.Id ? "active" : "")" style="@CorrelationGridColumnsStyle" @onclick="() => SelectProblem(item)">
                                     <span>@FormatDelta(item)</span>
                                     <span>@FormatTime(item.TimestampUtc)</span>
                                     <span class="level-pill @item.Level">@DisplayLevel(item.Level)</span>

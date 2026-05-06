@@ -99,8 +99,8 @@
                     var project = summary.Project;
                     <article class="project-card">
                         <div>
-                            <h3>@project.Name</h3>
-                            <p>@project.Description</p>
+                            <h3 title="@project.Name">@project.Name</h3>
+                            <p title="@project.Description">@project.Description</p>
                         </div>
                         <div class="project-card-stats">
                             <span>@FormatCount(summary.AnalyzedLogCount) / @FormatCount(summary.LogCount) логов</span>
