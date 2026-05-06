@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using LogAnalyzer.Application;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SharpCompress.Archives;
 
 namespace LogAnalyzer.Infrastructure.Storage;
 
@@ -10,7 +11,9 @@ public sealed class FileSystemLogStorage : ILogFileStorage
 {
     private static readonly HashSet<string> ArchiveExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".zip"
+        ".zip",
+        ".7z",
+        ".rar"
     };
 
     private static readonly HashSet<string> SupportedLogExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -74,7 +77,16 @@ public sealed class FileSystemLogStorage : ILogFileStorage
         {
             var target = Path.Combine(extractedRoot, Path.GetFileNameWithoutExtension(archive));
             Directory.CreateDirectory(target);
-            await ExtractZipSafelyAsync(archive, target, cancellationToken);
+            var ext = Path.GetExtension(archive);
+            if (ext.Equals(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                await ExtractZipSafelyAsync(archive, target, cancellationToken);
+            }
+            else if (ext.Equals(".7z", StringComparison.OrdinalIgnoreCase)
+                     || ext.Equals(".rar", StringComparison.OrdinalIgnoreCase))
+            {
+                await ExtractSharpCompressArchiveSafelyAsync(archive, target, ext, cancellationToken);
+            }
         }
 
         var files = Directory.EnumerateFiles(originalRoot, "*", SearchOption.AllDirectories)
@@ -149,6 +161,110 @@ public sealed class FileSystemLogStorage : ILogFileStorage
             await using var output = File.Create(destinationPath);
             await entryStream.CopyToAsync(output, cancellationToken);
         }
+    }
+
+    private async Task ExtractSharpCompressArchiveSafelyAsync(
+        string archivePath,
+        string targetDirectory,
+        string archiveExtension,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Extracting {Format} archive {Archive}", archiveExtension, archivePath);
+        var targetRoot = Path.GetFullPath(targetDirectory);
+        var fileCount = 0;
+        var extractedBytes = 0L;
+
+        using var stream = File.OpenRead(archivePath);
+        using var archive = ArchiveFactory.Open(stream);
+        foreach (var entry in archive.Entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (entry.IsDirectory || string.IsNullOrWhiteSpace(entry.Key))
+            {
+                continue;
+            }
+
+            if (entry.IsEncrypted)
+            {
+                throw new InvalidOperationException("Зашифрованные записи в архиве не поддерживаются.");
+            }
+
+            fileCount++;
+            if (fileCount > _options.MaxArchiveFiles)
+            {
+                throw new InvalidOperationException($"Archive contains more than {_options.MaxArchiveFiles} files.");
+            }
+
+            var relativePath = NormalizeArchiveEntryPath(entry.Key);
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                continue;
+            }
+
+            var depth = relativePath.Count(ch => ch is '/' or '\\');
+            if (depth > _options.MaxArchiveDepth)
+            {
+                throw new InvalidOperationException($"Archive nesting depth is greater than {_options.MaxArchiveDepth}.");
+            }
+
+            var entrySize = entry.Size;
+            if (entrySize >= 0)
+            {
+                extractedBytes += entrySize;
+                if (extractedBytes > _options.MaxExtractedBytes)
+                {
+                    throw new InvalidOperationException($"Extracted data is larger than {_options.MaxExtractedBytes} bytes.");
+                }
+            }
+
+            var destinationPath = Path.GetFullPath(Path.Combine(
+                targetRoot,
+                relativePath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar)));
+
+            if (!destinationPath.StartsWith(targetRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(destinationPath, targetRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Archive entry tries to write outside extraction directory.");
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+            await using var entryStream = entry.OpenEntryStream();
+            await using var output = File.Create(destinationPath);
+            if (entrySize >= 0)
+            {
+                await entryStream.CopyToAsync(output, cancellationToken);
+            }
+            else
+            {
+                var buffer = new byte[81920];
+                int read;
+                while ((read = await entryStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
+                {
+                    extractedBytes += read;
+                    if (extractedBytes > _options.MaxExtractedBytes)
+                    {
+                        throw new InvalidOperationException($"Extracted data is larger than {_options.MaxExtractedBytes} bytes.");
+                    }
+
+                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Убирает ведущие слэши и типичный мусор в ключах записей архива.
+    /// </summary>
+    private static string NormalizeArchiveEntryPath(string key)
+    {
+        var trimmed = key.Trim();
+        while (trimmed.StartsWith('/') || trimmed.StartsWith('\\'))
+        {
+            trimmed = trimmed[1..].TrimStart();
+        }
+
+        return trimmed;
     }
 
     private static bool IsSupportedLogFile(string path)
