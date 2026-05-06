@@ -205,7 +205,16 @@ public sealed class ClickHouseLogEventStore : ILogEventStore
         if (!string.IsNullOrWhiteSpace(request.Query))
         {
             var query = ClickHouseSql.QuoteLiteral($"%{request.Query.Trim()}%");
-            conditions.Add($"(message LIKE {query} OR raw_text LIKE {query} OR exception LIKE {query} OR url LIKE {query})");
+            var inner = request.TextSearchScope switch
+            {
+                LogEventTextSearchScope.Message => $"message LIKE {query}",
+                LogEventTextSearchScope.Exception => $"exception LIKE {query}",
+                LogEventTextSearchScope.RawText => $"raw_text LIKE {query}",
+                LogEventTextSearchScope.Url => $"url LIKE {query}",
+                LogEventTextSearchScope.MessageAndException => $"message LIKE {query} OR exception LIKE {query}",
+                _ => $"message LIKE {query} OR raw_text LIKE {query} OR exception LIKE {query} OR url LIKE {query}"
+            };
+            conditions.Add($"({inner})");
         }
 
         if (!string.IsNullOrWhiteSpace(request.ThreadId))

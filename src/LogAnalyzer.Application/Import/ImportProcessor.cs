@@ -43,6 +43,32 @@ public sealed class ImportProcessor
                 new UploadProgressUpdate(TotalFiles: files.Count),
                 cancellationToken);
 
+            if (files.Count == 0)
+            {
+                const string message =
+                    "Не найдено файлов логов для импорта. Поддерживаются отдельные файлы .log, .txt, .csv, .trace, .iis, .w3c и архивы .zip / .7z / .rar с такими файлами внутри.";
+
+                await AddErrorAsync(
+                    job.UploadSessionId,
+                    null,
+                    null,
+                    message,
+                    null,
+                    cancellationToken);
+
+                await _metadataRepository.UpdateUploadSessionAsync(
+                    job.UploadSessionId,
+                    new UploadProgressUpdate(
+                        Status: UploadStatuses.Failed,
+                        FinishedAt: DateTimeOffset.UtcNow,
+                        ErrorCount: 1,
+                        CurrentFile: string.Empty),
+                    cancellationToken);
+
+                _logger.LogWarning("Import {UploadSessionId} failed: no supported log files were found.", job.UploadSessionId);
+                return;
+            }
+
             var processedFiles = 0;
             var processedLines = 0L;
             var totalLines = 0L;
@@ -201,11 +227,20 @@ public sealed class ImportProcessor
         catch (Exception ex)
         {
             _logger.LogError(ex, "Import {UploadSessionId} failed", job.UploadSessionId);
+            await AddErrorAsync(
+                job.UploadSessionId,
+                null,
+                null,
+                ex.Message,
+                null,
+                CancellationToken.None);
+
             await _metadataRepository.UpdateUploadSessionAsync(
                 job.UploadSessionId,
                 new UploadProgressUpdate(
                     Status: UploadStatuses.Failed,
-                    FinishedAt: DateTimeOffset.UtcNow),
+                    FinishedAt: DateTimeOffset.UtcNow,
+                    ErrorCount: 1),
                 CancellationToken.None);
         }
     }

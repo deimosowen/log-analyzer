@@ -21,6 +21,10 @@ else
         </div>
         <div class="header-actions">
             <button class="btn btn-outline-secondary" @onclick="LoadData">Обновить</button>
+            @if (IsProjectOwner)
+            {
+                <button class="btn btn-outline-primary" @onclick="OpenShareModalAsync" disabled="@shareBusy">Поделиться</button>
+            }
             <button class="btn btn-primary" @onclick="OpenAnalysis">Анализ инцидента</button>
         </div>
     </header>
@@ -30,7 +34,7 @@ else
             <div>
                 <span class="eyebrow">Шаг 1</span>
                 <h2>Выберите файлы</h2>
-                <p>Можно загрузить отдельные `.log`, `.txt`, `.csv` или архив `.zip`.</p>
+                <p>Можно загрузить отдельные `.log`, `.txt`, `.csv` или архивы `.zip` / `.7z` / `.rar`; вложенные папки в архиве поддерживаются.</p>
             </div>
             <InputFile class="form-control file-input" OnChange="OnFilesSelected" multiple />
             @if (selectedFiles.Any())
@@ -95,6 +99,7 @@ else
                     {
                         @foreach (var upload in uploads)
                         {
+                            var errors = importErrors.GetValueOrDefault(upload.Id) ?? [];
                             <tr>
                                 <td><span class="status-pill @upload.Status">@DisplayStatus(upload.Status)</span></td>
                                 <td>@upload.ProcessedFiles / @upload.TotalFiles</td>
@@ -104,6 +109,14 @@ else
                                 <td>@upload.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                                 <td>@(upload.FinishedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "")</td>
                             </tr>
+                            @if (errors.Count > 0)
+                            {
+                                <tr class="upload-error-row">
+                                    <td colspan="7">
+                                        <strong>Причина:</strong> @errors[0].ErrorMessage
+                                    </td>
+                                </tr>
+                            }
                         }
                     }
                 </tbody>
@@ -155,5 +168,32 @@ else
             </table>
         </div>
     </section>
+    </div>
+}
+
+@if (showShareModal && project is not null)
+{
+    <div class="share-modal-backdrop" @onclick="CloseShareModal"></div>
+    <div class="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+        <h2 id="share-modal-title">Ссылка-приглашение</h2>
+        <p class="share-modal-hint">Отправьте ссылку коллеге. Она сможет присоединиться к инциденту после входа в аккаунт.</p>
+        @if (shareBusy)
+        {
+            <p class="muted">Готовим ссылку…</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(shareError))
+        {
+            <div class="alert alert-danger">@shareError</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(shareUrl))
+        {
+            <label class="share-url-label" for="share-url-input">Уникальная ссылка</label>
+            <div class="share-url-row">
+                <input id="share-url-input" class="form-control" readonly value="@shareUrl" />
+            </div>
+        }
+        <div class="share-modal-actions">
+            <button class="btn btn-primary" type="button" @onclick="CloseShareModal">Готово</button>
+        </div>
     </div>
 }

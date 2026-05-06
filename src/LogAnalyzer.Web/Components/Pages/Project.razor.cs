@@ -16,6 +16,8 @@ public partial class Project : IAsyncDisposable
     private CurrentUser currentUser = new("local-dev", "local@dev.local", "Локальный пользователь", true);
     private List<UploadSessionEntity> uploads = [];
     private List<LogFileEntity> logs = [];
+    private IReadOnlyDictionary<string, IReadOnlyList<ImportErrorEntity>> importErrors =
+        new Dictionary<string, IReadOnlyList<ImportErrorEntity>>();
     private IReadOnlyDictionary<string, LogFileEventStats> stats = new Dictionary<string, LogFileEventStats>();
     private IReadOnlyList<IBrowserFile> selectedFiles = [];
     private string timeZoneId = TimeZoneDefaults.Utc;
@@ -23,9 +25,16 @@ public partial class Project : IAsyncDisposable
     private bool combineMultiline = true;
     private bool uploadBusy;
     private string? error;
+    private bool showShareModal;
+    private string? shareUrl;
+    private string? shareError;
+    private bool shareBusy;
     private readonly CancellationTokenSource refreshCts = new();
 
     [Parameter] public string ProjectId { get; set; } = string.Empty;
+
+    private bool IsProjectOwner =>
+        project is not null && string.Equals(project.OwnerUserId, currentUser.Id, StringComparison.Ordinal);
 
     [Inject] private IMetadataRepository Metadata { get; set; } = null!;
     [Inject] private ILogFileStorage Storage { get; set; } = null!;
@@ -54,7 +63,29 @@ public partial class Project : IAsyncDisposable
 
         uploads = (await Metadata.ListUploadSessionsAsync(ProjectId, CancellationToken.None)).ToList();
         logs = (await Metadata.ListLogFilesAsync(ProjectId, CancellationToken.None)).ToList();
+        importErrors = await LoadImportErrorsAsync(uploads);
         stats = await EventStore.GetStatsByLogFileAsync(ProjectId, CancellationToken.None);
+    }
+
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<ImportErrorEntity>>> LoadImportErrorsAsync(
+        IReadOnlyCollection<UploadSessionEntity> uploadSessions)
+    {
+        var uploadsWithErrors = uploadSessions
+            .Where(upload => upload.ErrorCount > 0 || upload.Status == UploadStatuses.Failed)
+            .ToArray();
+
+        if (uploadsWithErrors.Length == 0)
+        {
+            return new Dictionary<string, IReadOnlyList<ImportErrorEntity>>();
+        }
+
+        var pairs = await Task.WhenAll(uploadsWithErrors.Select(async upload =>
+        {
+            var errors = await Metadata.ListImportErrorsAsync(upload.Id, CancellationToken.None);
+            return new KeyValuePair<string, IReadOnlyList<ImportErrorEntity>>(upload.Id, errors);
+        }));
+
+        return pairs.ToDictionary(pair => pair.Key, pair => pair.Value);
     }
 
     private void OnFilesSelected(InputFileChangeEventArgs args)
@@ -101,6 +132,47 @@ public partial class Project : IAsyncDisposable
     private void OpenAnalysis()
     {
         Navigation.NavigateTo($"/projects/{ProjectId}/analysis");
+    }
+
+    private async Task OpenShareModalAsync()
+    {
+        if (project is null || !IsProjectOwner)
+        {
+            return;
+        }
+
+        shareError = null;
+        shareUrl = null;
+        showShareModal = true;
+        shareBusy = true;
+        try
+        {
+            var token = await Metadata.CreateShareInviteAsync(currentUser.Id, ProjectId, CancellationToken.None);
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                shareError = "Не удалось создать приглашение. Доступно только владельцу инцидента.";
+            }
+            else
+            {
+                var root = Navigation.BaseUri.TrimEnd('/');
+                shareUrl = $"{root}/invite/{token}";
+            }
+        }
+        catch (Exception ex)
+        {
+            shareError = ex.Message;
+        }
+        finally
+        {
+            shareBusy = false;
+        }
+    }
+
+    private void CloseShareModal()
+    {
+        showShareModal = false;
+        shareUrl = null;
+        shareError = null;
     }
 
     private void BackToProjects()

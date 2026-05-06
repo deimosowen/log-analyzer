@@ -11,6 +11,9 @@ public sealed record LogEventSearchRequest
     public IReadOnlyCollection<string> LogFileIds { get; init; } = [];
     public IReadOnlyCollection<string> Levels { get; init; } = [];
     public string? Query { get; init; }
+
+    /// <summary>Ограничивает поля, в которых ищется <see cref="Query"/>.</summary>
+    public LogEventTextSearchScope TextSearchScope { get; init; } = LogEventTextSearchScope.All;
     public string? ThreadId { get; init; }
     public string? Source { get; init; }
     public bool OnlyHttp { get; init; }

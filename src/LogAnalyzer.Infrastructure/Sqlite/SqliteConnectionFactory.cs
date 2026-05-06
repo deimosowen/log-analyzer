@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace LogAnalyzer.Infrastructure.Sqlite;
@@ -7,13 +8,26 @@ public sealed class SqliteConnectionFactory
 {
     private readonly string _connectionString;
 
-    public SqliteConnectionFactory(IOptions<SqliteOptions> options)
+    /// <summary>
+    /// Абсолютный путь к файлу SQLite (метаданные и события в одном файле при стандартной конфигурации).
+    /// </summary>
+    public string DatabasePath { get; }
+
+    public SqliteConnectionFactory(IOptions<SqliteOptions> options, IHostEnvironment hostEnvironment)
     {
-        var databasePath = Path.GetFullPath(options.Value.DatabasePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
+        var configured = options.Value.DatabasePath.Trim();
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            throw new InvalidOperationException("Sqlite:DatabasePath is not configured.");
+        }
+
+        DatabasePath = Path.IsPathFullyQualified(configured)
+            ? Path.GetFullPath(configured)
+            : Path.GetFullPath(Path.Combine(hostEnvironment.ContentRootPath, configured));
+        Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
         _connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = databasePath,
+            DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Shared
         }.ToString();

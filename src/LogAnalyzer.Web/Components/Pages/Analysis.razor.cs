@@ -47,6 +47,11 @@ public partial class Analysis : IAsyncDisposable
     private long correlatedTotalCount;
     private string displayTimeZoneId = TimeZoneDefaults.Display;
     private string? query;
+    private string problemLogFocusId = string.Empty;
+    private double? step1ExplicitHeightPx;
+    private int[] problemColWidths = [200, 80, 216];
+    private int[] correlationColWidths = [88, 200, 80, 216];
+    private int[] summaryColWidths = [88, 160, 80, 88];
     private int beforeSeconds = EventSearchDefaults.DefaultBeforeSeconds;
     private int afterSeconds = EventSearchDefaults.DefaultAfterSeconds;
     private string? httpMethodFilter;
@@ -177,6 +182,10 @@ public partial class Analysis : IAsyncDisposable
         catch (JSDisconnectedException)
         {
         }
+        catch (InvalidOperationException)
+        {
+            // Пререндер или размонтирование до интерактивности — вызовы JS недоступны.
+        }
     }
 
     private async ValueTask<ItemsProviderResult<LogEvent>> LoadProblems(ItemsProviderRequest request)
@@ -192,15 +201,130 @@ public partial class Analysis : IAsyncDisposable
 
     private LogEventSearchRequest BuildProblemSearchRequest(int offset, int limit)
     {
+        var logIds = ProblemSearchLogFiles();
+
         return new LogEventSearchRequest
         {
             ProjectId = ProjectId,
-            LogFileIds = selectedLogIds.ToArray(),
+            LogFileIds = logIds,
             Levels = ActiveLevels(),
             Query = query,
+            TextSearchScope = LogEventTextSearchScope.All,
             Offset = offset,
             Limit = limit <= 0 ? 100 : limit
         };
+    }
+
+    private string[] ProblemSearchLogFiles()
+    {
+        if (!string.IsNullOrWhiteSpace(problemLogFocusId)
+            && selectedLogIds.Contains(problemLogFocusId))
+        {
+            return [problemLogFocusId];
+        }
+
+        return selectedLogIds.ToArray();
+    }
+
+    private string? Step1HeightStyle =>
+        step1ExplicitHeightPx.HasValue
+            ? FormattableString.Invariant(
+                $"height:{step1ExplicitHeightPx.Value}px;max-height:90vh;flex-grow:0;flex-shrink:0;")
+            : null;
+
+    private string ProblemGridColumnsStyle =>
+        $"grid-template-columns:{problemColWidths[0]}px {problemColWidths[1]}px {problemColWidths[2]}px minmax(12rem, 1fr);";
+
+    private string CorrelationGridColumnsStyle =>
+        $"grid-template-columns:{correlationColWidths[0]}px {correlationColWidths[1]}px {correlationColWidths[2]}px {correlationColWidths[3]}px minmax(12rem, 1fr);";
+
+    private string SummaryGridColumnsStyle =>
+        $"grid-template-columns:{summaryColWidths[0]}px {summaryColWidths[1]}px {summaryColWidths[2]}px {summaryColWidths[3]}px minmax(12rem, 1fr);";
+
+    private async Task BeginColumnResizeAsync(MouseEventArgs e, string tableKind, int columnIndex)
+    {
+        if (e.Button != 0 || timelineChartReference is null || columnIndex < 0)
+        {
+            return;
+        }
+
+        int[] snapshot = tableKind switch
+        {
+            "problem" => (int[])problemColWidths.Clone(),
+            "correlation" => (int[])correlationColWidths.Clone(),
+            "summary" => (int[])summaryColWidths.Clone(),
+            _ => []
+        };
+
+        if (snapshot.Length == 0 || columnIndex >= snapshot.Length)
+        {
+            return;
+        }
+
+        await JsRuntime.InvokeVoidAsync(
+            "logAnalyzerGridResize.startColumnDrag",
+            timelineChartReference,
+            tableKind,
+            e.ClientX,
+            columnIndex,
+            snapshot,
+            52,
+            720);
+    }
+
+    private async Task BeginStageResizeAsync(MouseEventArgs e)
+    {
+        if (e.Button != 0 || !showStep1 || !showStep2 || timelineChartReference is null)
+        {
+            return;
+        }
+
+        await JsRuntime.InvokeVoidAsync(
+            "logAnalyzerStageSplit.begin",
+            timelineChartReference,
+            "#analysis-step1-panel",
+            e.ClientY,
+            176,
+            2600);
+    }
+
+    [JSInvokable]
+    public Task SetAnalysisColumnWidths(string tableKind, int columnIndex, int widthPx)
+    {
+        var next = Math.Clamp(widthPx, 52, 720);
+        switch (tableKind)
+        {
+            case "problem":
+                if (columnIndex < problemColWidths.Length)
+                {
+                    problemColWidths[columnIndex] = next;
+                }
+
+                break;
+            case "correlation":
+                if (columnIndex < correlationColWidths.Length)
+                {
+                    correlationColWidths[columnIndex] = next;
+                }
+
+                break;
+            case "summary":
+                if (columnIndex < summaryColWidths.Length)
+                {
+                    summaryColWidths[columnIndex] = next;
+                }
+
+                break;
+        }
+
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task SetAnalysisStep1Height(double px)
+    {
+        step1ExplicitHeightPx = Math.Clamp(px, 120, 2000);
+        return InvokeAsync(StateHasChanged);
     }
 
     private LogEventSearchRequest BuildCorrelationSearchRequest()
@@ -281,6 +405,8 @@ public partial class Analysis : IAsyncDisposable
         selectedEvent = null;
         ClearCorrelation();
         query = null;
+        problemLogFocusId = string.Empty;
+        step1ExplicitHeightPx = null;
         selectedLevels = ProblemLevels.ToHashSet(StringComparer.OrdinalIgnoreCase);
         selectedLogIds = logs.Select(log => log.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         beforeSeconds = EventSearchDefaults.DefaultBeforeSeconds;
