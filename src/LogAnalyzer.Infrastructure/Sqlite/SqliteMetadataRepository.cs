@@ -1,5 +1,6 @@
 using System.Globalization;
 using LogAnalyzer.Application;
+using LogAnalyzer.Application.Projects;
 using LogAnalyzer.Domain;
 using Microsoft.Data.Sqlite;
 
@@ -61,18 +62,37 @@ public sealed class SqliteMetadataRepository : IMetadataRepository
         var project = new ProjectEntity(Guid.NewGuid().ToString("N"), ownerUserId, name.Trim(), description, now, now);
 
         await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            INSERT INTO projects (id, owner_user_id, name, description, created_at, updated_at)
-            VALUES ($id, $owner_user_id, $name, $description, $created_at, $updated_at);
-            """;
-        Add(command, "$id", project.Id);
-        Add(command, "$owner_user_id", project.OwnerUserId);
-        Add(command, "$name", project.Name);
-        Add(command, "$description", project.Description);
-        Add(command, "$created_at", ToDb(project.CreatedAt));
-        Add(command, "$updated_at", ToDb(project.UpdatedAt));
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = (SqliteTransaction)transaction;
+            command.CommandText = """
+                INSERT INTO projects (id, owner_user_id, name, description, created_at, updated_at)
+                VALUES ($id, $owner_user_id, $name, $description, $created_at, $updated_at);
+                """;
+            Add(command, "$id", project.Id);
+            Add(command, "$owner_user_id", project.OwnerUserId);
+            Add(command, "$name", project.Name);
+            Add(command, "$description", project.Description);
+            Add(command, "$created_at", ToDb(project.CreatedAt));
+            Add(command, "$updated_at", ToDb(project.UpdatedAt));
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var memberCommand = connection.CreateCommand())
+        {
+            memberCommand.Transaction = (SqliteTransaction)transaction;
+            memberCommand.CommandText = """
+                INSERT INTO project_members (project_id, user_id, role, created_at)
+                VALUES ($project_id, $user_id, 'owner', $created_at);
+                """;
+            Add(memberCommand, "$project_id", project.Id);
+            Add(memberCommand, "$user_id", ownerUserId);
+            Add(memberCommand, "$created_at", ToDb(project.CreatedAt));
+            await memberCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
         return project;
     }
 
@@ -80,8 +100,13 @@ public sealed class SqliteMetadataRepository : IMetadataRepository
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT * FROM projects WHERE owner_user_id = $owner_user_id ORDER BY updated_at DESC;";
-        Add(command, "$owner_user_id", ownerUserId);
+        command.CommandText = """
+            SELECT p.*
+            FROM projects p
+            INNER JOIN project_members m ON m.project_id = p.id AND m.user_id = $user_id
+            ORDER BY p.updated_at DESC;
+            """;
+        Add(command, "$user_id", ownerUserId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var result = new List<ProjectEntity>();
         while (await reader.ReadAsync(cancellationToken))
@@ -96,9 +121,14 @@ public sealed class SqliteMetadataRepository : IMetadataRepository
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT * FROM projects WHERE id = $id AND owner_user_id = $owner_user_id;";
-        Add(command, "$id", projectId);
-        Add(command, "$owner_user_id", ownerUserId);
+        command.CommandText = """
+            SELECT p.*
+            FROM projects p
+            INNER JOIN project_members m ON m.project_id = p.id AND m.user_id = $user_id
+            WHERE p.id = $project_id;
+            """;
+        Add(command, "$project_id", projectId);
+        Add(command, "$user_id", ownerUserId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadProject(reader) : null;
     }
@@ -107,7 +137,10 @@ public sealed class SqliteMetadataRepository : IMetadataRepository
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var projectCommand = connection.CreateCommand();
-        projectCommand.CommandText = "SELECT 1 FROM projects WHERE id = $id AND owner_user_id = $owner_user_id;";
+        projectCommand.CommandText = """
+            SELECT 1 FROM project_members
+            WHERE project_id = $id AND user_id = $owner_user_id AND role = 'owner';
+            """;
         Add(projectCommand, "$id", projectId);
         Add(projectCommand, "$owner_user_id", ownerUserId);
         if (await projectCommand.ExecuteScalarAsync(cancellationToken) is null)
@@ -116,7 +149,11 @@ public sealed class SqliteMetadataRepository : IMetadataRepository
         }
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        foreach (var table in new[] { "import_errors", "log_files", "upload_sessions", "projects" })
+        foreach (var table in new[]
+                 {
+                     "import_errors", "log_files", "upload_sessions", "project_share_invites", "project_members",
+                     "projects"
+                 })
         {
             await using var command = connection.CreateCommand();
             command.Transaction = (SqliteTransaction)transaction;
@@ -125,6 +162,8 @@ public sealed class SqliteMetadataRepository : IMetadataRepository
                 "import_errors" => "DELETE FROM import_errors WHERE upload_session_id IN (SELECT id FROM upload_sessions WHERE project_id = $id);",
                 "log_files" => "DELETE FROM log_files WHERE project_id = $id;",
                 "upload_sessions" => "DELETE FROM upload_sessions WHERE project_id = $id;",
+                "project_share_invites" => "DELETE FROM project_share_invites WHERE project_id = $id;",
+                "project_members" => "DELETE FROM project_members WHERE project_id = $id;",
                 _ => "DELETE FROM projects WHERE id = $id;"
             };
             Add(command, "$id", projectId);
@@ -132,6 +171,138 @@ public sealed class SqliteMetadataRepository : IMetadataRepository
         }
 
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<string?> CreateShareInviteAsync(
+        string creatorUserId,
+        string projectId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var ownerCheck = connection.CreateCommand();
+        ownerCheck.CommandText = "SELECT 1 FROM projects WHERE id = $project_id AND owner_user_id = $user_id;";
+        Add(ownerCheck, "$project_id", projectId);
+        Add(ownerCheck, "$user_id", creatorUserId);
+        if (await ownerCheck.ExecuteScalarAsync(cancellationToken) is null)
+        {
+            return null;
+        }
+
+        var token = ShareInviteToken.Create();
+        var inviteId = Guid.NewGuid().ToString("N");
+        var now = DateTimeOffset.UtcNow;
+        await using var insert = connection.CreateCommand();
+        insert.CommandText = """
+            INSERT INTO project_share_invites (id, project_id, token, created_by_user_id, created_at)
+            VALUES ($id, $project_id, $token, $created_by_user_id, $created_at);
+            """;
+        Add(insert, "$id", inviteId);
+        Add(insert, "$project_id", projectId);
+        Add(insert, "$token", token);
+        Add(insert, "$created_by_user_id", creatorUserId);
+        Add(insert, "$created_at", ToDb(now));
+        await insert.ExecuteNonQueryAsync(cancellationToken);
+        return token;
+    }
+
+    public async Task<ProjectShareInvitePreview?> GetShareInvitePreviewAsync(string token, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return null;
+        }
+
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT i.token AS invite_token, p.id AS project_id, p.name AS project_name, p.description AS project_description,
+                   u.display_name AS sharer_display_name, u.email AS sharer_email, i.created_at AS invite_created_at
+            FROM project_share_invites i
+            INNER JOIN projects p ON p.id = i.project_id
+            INNER JOIN app_users u ON u.id = i.created_by_user_id
+            WHERE i.token = $token;
+            """;
+        Add(command, "$token", token);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new ProjectShareInvitePreview(
+            reader.GetString(reader.GetOrdinal("invite_token")),
+            reader.GetString(reader.GetOrdinal("project_id")),
+            reader.GetString(reader.GetOrdinal("project_name")),
+            GetNullableString(reader, "project_description"),
+            reader.GetString(reader.GetOrdinal("sharer_display_name")),
+            reader.GetString(reader.GetOrdinal("sharer_email")),
+            FromDb(reader.GetString(reader.GetOrdinal("invite_created_at"))));
+    }
+
+    public async Task<ShareInviteAcceptResult> AcceptShareInviteAsync(
+        string userId,
+        string token,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return ShareInviteAcceptResult.NotAuthenticated;
+        }
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return ShareInviteAcceptResult.InviteNotFound;
+        }
+
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        string? projectId;
+        await using (var loadInvite = connection.CreateCommand())
+        {
+            loadInvite.Transaction = (SqliteTransaction)transaction;
+            loadInvite.CommandText = "SELECT project_id FROM project_share_invites WHERE token = $token;";
+            Add(loadInvite, "$token", token);
+            var scalar = await loadInvite.ExecuteScalarAsync(cancellationToken);
+            projectId = scalar as string;
+        }
+
+        if (projectId is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ShareInviteAcceptResult.InviteNotFound;
+        }
+
+        await using (var memberCheck = connection.CreateCommand())
+        {
+            memberCheck.Transaction = (SqliteTransaction)transaction;
+            memberCheck.CommandText = """
+                SELECT 1 FROM project_members WHERE project_id = $project_id AND user_id = $user_id;
+                """;
+            Add(memberCheck, "$project_id", projectId);
+            Add(memberCheck, "$user_id", userId);
+            if (await memberCheck.ExecuteScalarAsync(cancellationToken) is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return ShareInviteAcceptResult.AlreadyHasAccess;
+            }
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        await using (var insertMember = connection.CreateCommand())
+        {
+            insertMember.Transaction = (SqliteTransaction)transaction;
+            insertMember.CommandText = """
+                INSERT INTO project_members (project_id, user_id, role, created_at)
+                VALUES ($project_id, $user_id, 'member', $created_at);
+                """;
+            Add(insertMember, "$project_id", projectId);
+            Add(insertMember, "$user_id", userId);
+            Add(insertMember, "$created_at", ToDb(now));
+            await insertMember.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return ShareInviteAcceptResult.Accepted;
     }
 
     public async Task<UploadSessionEntity> CreateUploadSessionAsync(UploadSessionCreateRequest request, CancellationToken cancellationToken)

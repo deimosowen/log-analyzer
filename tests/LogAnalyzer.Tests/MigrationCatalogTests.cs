@@ -12,7 +12,7 @@ public sealed class MigrationCatalogTests
     {
         var migrations = DatabaseMigrationCatalog.Load<SqliteMetadataMigration>();
 
-        Assert.Equal([1, 2], migrations.Select(static migration => migration.Version));
+        Assert.Equal([1, 2, 3], migrations.Select(static migration => migration.Version));
     }
 
     [Fact]
@@ -20,7 +20,7 @@ public sealed class MigrationCatalogTests
     {
         var migrations = DatabaseMigrationCatalog.Load<PostgresMetadataMigration>();
 
-        Assert.Equal([1, 2], migrations.Select(static migration => migration.Version));
+        Assert.Equal([1, 2, 3], migrations.Select(static migration => migration.Version));
     }
 
     [Fact]

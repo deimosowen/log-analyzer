@@ -1,0 +1,65 @@
+@page "/invite/{Token}"
+@rendermode InteractiveServer
+@attribute [AllowAnonymous]
+
+<PageTitle>Приглашение в инцидент</PageTitle>
+
+<section class="invite-page panel">
+    @if (loading)
+    {
+        <p class="muted">Загрузка приглашения…</p>
+    }
+    else if (preview is null)
+    {
+        <h1>Ссылка недействительна</h1>
+        <p>Приглашение не найдено или устарело.</p>
+        <a class="btn btn-primary" href="/">На главную</a>
+    }
+    else
+    {
+        <span class="eyebrow">Приглашение</span>
+        <h1>@preview.ProjectName</h1>
+        @if (!string.IsNullOrWhiteSpace(preview.ProjectDescription))
+        {
+            <p class="invite-description">@preview.ProjectDescription</p>
+        }
+        <dl class="invite-meta">
+            <div>
+                <dt>Делится</dt>
+                <dd>@preview.SharerDisplayName (@preview.SharerEmail)</dd>
+            </div>
+            <div>
+                <dt>Создано</dt>
+                <dd>@preview.CreatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</dd>
+            </div>
+        </dl>
+
+        @if (!string.IsNullOrWhiteSpace(actionMessage))
+        {
+            <div class="alert @(actionError ? "alert-danger" : "alert-success") mt-3">@actionMessage</div>
+        }
+
+        @if (alreadyMember)
+        {
+            <p class="mt-3">У вас уже есть доступ к этому инциденту.</p>
+            <a class="btn btn-primary" href="@ProjectHref">Открыть инцидент</a>
+        }
+        else if (!currentUser.IsAuthenticated)
+        {
+            <p class="mt-3">Войдите, чтобы принять приглашение.</p>
+            <a class="btn btn-primary" href="@LoginHref">Войти</a>
+            <a class="btn btn-outline-secondary ms-2" href="/">На главную</a>
+        }
+        else
+        {
+            <div class="invite-actions mt-3">
+                <button class="btn btn-primary" type="button" disabled="@acceptBusy" @onclick="AcceptAsync">
+                    @(acceptBusy ? "Подождите…" : "Присоединиться")
+                </button>
+                <button class="btn btn-outline-secondary" type="button" disabled="@acceptBusy" @onclick="DeclineAsync">
+                    Отказаться
+                </button>
+            </div>
+        }
+    }
+</section>

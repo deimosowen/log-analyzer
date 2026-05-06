@@ -14,7 +14,7 @@ public sealed class SqliteLogEventStoreTimelineTests
         var databasePath = Path.Combine(Path.GetTempPath(), $"log-analyzer-tests-{Guid.NewGuid():N}", "events.db");
         try
         {
-            var factory = new SqliteConnectionFactory(Options.Create(new SqliteOptions { DatabasePath = databasePath }));
+            var factory = CreateFactory(databasePath);
             var migrator = new SqliteEventStoreMigrator(factory);
             await migrator.MigrateAsync(CancellationToken.None);
 
@@ -60,7 +60,7 @@ public sealed class SqliteLogEventStoreTimelineTests
         var databasePath = Path.Combine(Path.GetTempPath(), $"log-analyzer-tests-{Guid.NewGuid():N}", "events.db");
         try
         {
-            var factory = new SqliteConnectionFactory(Options.Create(new SqliteOptions { DatabasePath = databasePath }));
+            var factory = CreateFactory(databasePath);
             var migrator = new SqliteEventStoreMigrator(factory);
             await migrator.MigrateAsync(CancellationToken.None);
 
@@ -159,6 +159,21 @@ public sealed class SqliteLogEventStoreTimelineTests
             UserName = "demo-user",
             TimeTaken = timeTaken
         };
+    }
+
+    private static SqliteConnectionFactory CreateFactory(string databasePath)
+    {
+        var dir = Path.GetDirectoryName(databasePath);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        var hostRoot = Path.Combine(Path.GetTempPath(), $"la-test-host-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(hostRoot);
+        return new SqliteConnectionFactory(
+            Options.Create(new SqliteOptions { DatabasePath = databasePath }),
+            new TestHostEnvironment(hostRoot));
     }
 
     private static void DeleteDatabaseDirectory(string databasePath)
